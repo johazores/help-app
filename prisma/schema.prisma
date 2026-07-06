@@ -1,0 +1,117 @@
+// Sagip data model.
+// Design note: Stellar account secrets are never stored in plaintext — each
+// StellarAccount keeps an AES-256-GCM ciphertext plus its iv/tag. Network config
+// and other credentials live in the Setting table, not in code (per brief).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A person who signs in to Sagip. Custodial: we hold their Stellar keys for them.
+model User {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String
+  pinHash   String
+  createdAt DateTime @default(now())
+
+  stellarAccount   StellarAccount? @relation("UserAccount")
+  stellarAccountId String?         @unique
+
+  recipients Recipient[]
+  safetyNets SafetyNet[]
+}
+
+/// A custodial Stellar account. Secret is encrypted at rest.
+model StellarAccount {
+  id              String   @id @default(cuid())
+  publicKey       String   @unique
+  encryptedSecret String
+  encryptionIv    String
+  encryptionTag   String
+  createdAt       DateTime @default(now())
+
+  user      User?      @relation("UserAccount", fields: [userId], references: [id])
+  userId    String?    @unique
+  recipient Recipient? @relation("RecipientAccount")
+}
+
+/// A loved one the money can open to. Also custodial, so they can receive
+/// without ever managing keys.
+model Recipient {
+  id           String   @id @default(cuid())
+  name         String
+  relationship String
+  phone        String?
+  createdAt    DateTime @default(now())
+
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  stellarAccount   StellarAccount @relation("RecipientAccount", fields: [stellarAccountId], references: [id])
+  stellarAccountId String         @unique
+
+  safetyNets SafetyNet[]
+}
+
+enum SafetyNetStatus {
+  ACTIVE // owner is checking in; money is theirs, family cannot claim yet
+  OPENED // check-in window lapsed; family may now receive
+  RECEIVED // family has received the money
+  CLOSED // owner took the money back / cancelled
+}
+
+/// The core object: money set aside, guarded by a check-in.
+model SafetyNet {
+  id                 String          @id @default(cuid())
+  label              String
+  amount             String // stored as string to preserve exact Stellar precision
+  asset              String          @default("XLM")
+  status             SafetyNetStatus @default(ACTIVE)
+  balanceId          String? // current Stellar claimable balance id
+  checkInIntervalDays Int            @default(30)
+  unlockAt           DateTime // date the net opens to family if no check-in
+  lastCheckInAt      DateTime        @default(now())
+  claimCode          String          @unique
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  recipient   Recipient @relation(fields: [recipientId], references: [id])
+  recipientId String
+
+  activity Activity[]
+}
+
+enum ActivityType {
+  CREATED
+  CHECKED_IN
+  OPENED_TO_FAMILY
+  RECEIVED
+  CLOSED
+}
+
+/// Human-readable timeline for each safety net. Powers the demo story.
+model Activity {
+  id          String       @id @default(cuid())
+  type        ActivityType
+  description String
+  txHash      String?
+  createdAt   DateTime     @default(now())
+
+  safetyNet   SafetyNet @relation(fields: [safetyNetId], references: [id], onDelete: Cascade)
+  safetyNetId String
+}
+
+/// Runtime configuration & third-party credentials — kept in the DB, not in code.
+model Setting {
+  key   String @id
+  value String
+}

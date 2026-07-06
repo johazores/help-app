@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #f6f3ec;
+  --ink: #0c3b3a;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-paper text-body font-sans antialiased;
+    /* Generous base size — this product is used by older family members. */
+    font-size: 17px;
+    line-height: 1.6;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display text-ink;
+    letter-spacing: -0.01em;
+  }
+  /* Visible, consistent keyboard focus everywhere. */
+  :focus-visible {
+    outline: 3px solid #eba13b;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: #f6d9a6;
+    color: #0c3b3a;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-[1080px] px-5 sm:px-8;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-card shadow-soft;
+  }
+  .field-label {
+    @apply mb-2 block text-[15px] font-semibold text-ink;
+  }
+  .hint {
+    @apply text-[15px] text-subtle;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
