@@ -14,6 +14,21 @@ mobile number, a 6-number PIN, and one reassuring button.
 
 ---
 
+## Applying this to your repo (important)
+
+Replace your repo contents with this project **cleanly** — don't extract on top of the old
+files. In particular, make sure there is **no leftover `src/` folder and no second `pages/`
+folder**: a stale `pages/` next to the app directory is what causes the
+`Cannot find module '../../app/.../page.js'` build error. Quickest safe way:
+
+```bash
+# from your cloned repo, on a clean branch
+git rm -r --quiet . 2>/dev/null; true      # clear tracked files
+# copy everything from this project into the repo root, then:
+git add -A && git commit -m "Sagip: root layout, wallet UI, demo mode"
+git push
+```
+
 ## Why this idea
 
 Screened against the workshop’s “what not to build” guidance (escrow, lending,
@@ -58,8 +73,8 @@ touch the database.
 ## Architecture
 
 - **Next.js App Router** renders every page (`src/app/**`).
-- **Pages Router** is used **only** for API endpoints (`src/pages/api/**`). App Router and
-  Pages Router both live under `src/` — required so Next.js generates correct route types.
+- **Pages Router** is used **only** for API endpoints (`pages/api/**`). App Router (`app/`)
+  and Pages Router (`pages/`) both live at the project root — the standard Next.js layout.
 - **Simple, hand-rolled HS256 JWT** auth (`src/lib/jwt.ts`) — no auth library. Tokens
   travel in the `Authorization` header, which behaves identically on mobile web and PWAs.
 - **Prisma + PostgreSQL** for persistence.
@@ -70,13 +85,12 @@ touch the database.
 - **kebab-case** files and folders throughout.
 
 ```
-src/
-  app/                 App Router pages (landing, auth, dashboard, detail, claim)
-  components/          Reusable UI (ui/* primitives + composites)
-  lib/                 prisma, jwt, crypto, api guard, formatting
-  server/services/     settings, stellar, user, recipient, safety-net
-  services/            client-side API service classes
-  pages/api/           HTTP endpoints only (Pages Router)
+app/                   App Router pages (landing, auth, dashboard, detail, claim, welcome)
+components/             Reusable UI (ui/* primitives + composites)
+lib/                   prisma, jwt, crypto, api guard, formatting
+server/services/       settings, stellar, user, recipient, safety-net
+services/              client-side API service classes
+pages/api/             HTTP endpoints only (Pages Router)
 prisma/                schema + seed
 ```
 
