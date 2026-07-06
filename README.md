@@ -58,7 +58,8 @@ touch the database.
 ## Architecture
 
 - **Next.js App Router** renders every page (`src/app/**`).
-- **Pages Router** is used **only** for API endpoints (`pages/api/**`).
+- **Pages Router** is used **only** for API endpoints (`src/pages/api/**`). App Router and
+  Pages Router both live under `src/` — required so Next.js generates correct route types.
 - **Simple, hand-rolled HS256 JWT** auth (`src/lib/jwt.ts`) — no auth library. Tokens
   travel in the `Authorization` header, which behaves identically on mobile web and PWAs.
 - **Prisma + PostgreSQL** for persistence.
@@ -75,7 +76,7 @@ src/
   lib/                 prisma, jwt, crypto, api guard, formatting
   server/services/     settings, stellar, user, recipient, safety-net
   services/            client-side API service classes
-pages/api/             HTTP endpoints only
+  pages/api/           HTTP endpoints only (Pages Router)
 prisma/                schema + seed
 ```
 
@@ -105,18 +106,14 @@ Open http://localhost:3000.
 
 ## A 3-minute demo script
 
-1. **Get started** — create an account with any mobile number + 6-digit PIN.
-2. **Set aside money** — add a loved one (e.g. “Nanay Elena / Mother”), name the net
-   (“Monthly support”), enter an amount, and pick **“Every week.”**
-   *(To make the whole lifecycle fit in a live demo, temporarily add a shorter option —
-   e.g. `{ days: 0.003, label: "Demo (5 minutes)" }` — in `src/app/home/new/page.tsx`
-   and allow it in the service validation.)*
-3. **Check in** — open the net, tap **“I’m okay — check in,”** watch the lifeline ring
-   reset. Point out this is a real Stellar transaction.
-4. **Let it lapse** — once the window passes, the ring turns marigold and the net shows
-   **“Open to family.”**
-5. **Receive** — open the **share link** in another tab (this is the family’s view, no
-   login), tap **“Receive,”** and show the money landing. Done.
+The app has a **built-in demo mode**: when you create a safety net, choose
+**“Every few minutes”** as the check-in frequency. That compresses the whole lifecycle —
+set aside → check in → lapse → family receives — into a couple of minutes so you can show
+it live. No code changes needed.
+
+See **[DEMO.md](./DEMO.md)** for a full word-for-word script with timing and talking points,
+and **[ONBOARDING.md](./ONBOARDING.md)** for the plain-language “how to use the app” guide
+(the same walkthrough is available in-app under **How it works**).
 
 ## What I deliberately left out
 

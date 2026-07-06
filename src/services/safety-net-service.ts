@@ -14,7 +14,7 @@ class SafetyNetService {
     label: string;
     amount: string;
     recipientId: string;
-    checkInIntervalDays: number;
+    checkInIntervalMinutes: number;
   }): Promise<SafetyNet> {
     return apiClient.request<SafetyNet>("/safety-nets", { method: "POST", body: input });
   }

@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/api";
 import { stellarService } from "@/server/services/stellar-service";
 import { recipientService } from "@/server/services/recipient-service";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
 
 function makeClaimCode(): string {
   // 8 URL-safe characters — short enough to hand to a family member.
@@ -23,7 +23,7 @@ function present(net: SafetyNet & { recipient: { name: string; relationship: str
     amount: net.amount,
     forName: net.recipient.name,
     forRelationship: net.recipient.relationship,
-    checkInIntervalDays: net.checkInIntervalDays,
+    checkInIntervalMinutes: net.checkInIntervalMinutes,
     unlockAt: net.unlockAt.toISOString(),
     lastCheckInAt: net.lastCheckInAt.toISOString(),
     claimCode: net.claimCode,
@@ -71,7 +71,7 @@ class SafetyNetService {
 
   async create(
     ownerId: string,
-    input: { label: string; amount: string; recipientId: string; checkInIntervalDays: number },
+    input: { label: string; amount: string; recipientId: string; checkInIntervalMinutes: number },
   ) {
     const label = input.label.trim();
     if (label.length < 2) throw new ApiError(400, "Please give this a short name.");
@@ -80,8 +80,9 @@ class SafetyNetService {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new ApiError(400, "Please enter how much you want to set aside.");
     }
-    const interval = Math.round(input.checkInIntervalDays);
-    if (![7, 30, 90, 180].includes(interval)) {
+    const interval = Math.round(input.checkInIntervalMinutes);
+    // 3 = a short "try it out" window; the rest are week / month / 3 months.
+    if (![3, 10080, 43200, 129600].includes(interval)) {
       throw new ApiError(400, "Please choose how often you'll check in.");
     }
 
@@ -93,7 +94,7 @@ class SafetyNetService {
 
     const recipient = await recipientService.requireOwned(ownerId, input.recipientId);
 
-    const unlockAt = new Date(Date.now() + interval * DAY_MS);
+    const unlockAt = new Date(Date.now() + interval * MINUTE_MS);
     const amountStr = amount.toFixed(7);
 
     const { balanceId, txHash } = await stellarService.openSafetyNet({
@@ -111,7 +112,7 @@ class SafetyNetService {
         label,
         amount: amountStr,
         balanceId,
-        checkInIntervalDays: interval,
+        checkInIntervalMinutes: interval,
         unlockAt,
         lastCheckInAt: new Date(),
         claimCode: makeClaimCode(),
@@ -145,7 +146,7 @@ class SafetyNetService {
     });
     if (!owner?.stellarAccount) throw new ApiError(400, "Your account isn't ready.");
 
-    const newUnlockAt = new Date(Date.now() + net.checkInIntervalDays * DAY_MS);
+    const newUnlockAt = new Date(Date.now() + net.checkInIntervalMinutes * MINUTE_MS);
     const { balanceId, txHash } = await stellarService.resetSafetyNet({
       ownerAccountId: owner.stellarAccount.id,
       ownerPublicKey: owner.stellarAccount.publicKey,

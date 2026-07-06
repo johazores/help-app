@@ -17,7 +17,7 @@ import type { SafetyNetDetail } from "@/services/types";
 export default function SafetyNetDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const id = params.id;
+  const id = params?.id ?? "";
 
   const [net, setNet] = useState<SafetyNetDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,8 +109,9 @@ export default function SafetyNetDetailPage() {
   const progress = windowProgress(net.lastCheckInAt, net.unlockAt);
   const { text: remaining } = countdown(net.unlockAt);
   const active = net.status === "ACTIVE";
+  const openNow = active && Date.parse(net.unlockAt) <= Date.now();
   const tone =
-    net.status === "RECEIVED" ? "received" : net.status === "CLOSED" ? "closed" : net.isOpen ? "open" : "active";
+    net.status === "RECEIVED" ? "received" : net.status === "CLOSED" ? "closed" : openNow ? "open" : "active";
 
   return (
     <AppShell>
@@ -123,7 +124,7 @@ export default function SafetyNetDetailPage() {
           <p className="text-[16px] text-subtle">For {net.forName} · {net.forRelationship}</p>
           <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">{net.label}</h1>
         </div>
-        <Badge tone={tone}>{statusLabel(net.status, net.isOpen)}</Badge>
+        <Badge tone={tone}>{statusLabel(net.status, openNow)}</Badge>
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
@@ -138,16 +139,16 @@ export default function SafetyNetDetailPage() {
             {active ? (
               <LifelineRing
                 progress={progress}
-                open={net.isOpen}
-                centerLabel={net.isOpen ? "Open" : remaining}
-                centerSub={net.isOpen ? "for your family" : "until it opens to family"}
+                open={openNow}
+                centerLabel={openNow ? "Open" : remaining}
+                centerSub={openNow ? "for your family" : "until it opens to family"}
               />
             ) : (
               <LifelineRing progress={1} open centerLabel={net.status === "RECEIVED" ? "Received" : "Closed"} />
             )}
           </div>
 
-          {active && !net.isOpen ? (
+          {active && !openNow ? (
             <div className="mt-8 w-full">
               <Button fullWidth loading={busy === "checkin"} onClick={checkIn}>
                 I&rsquo;m okay — check in
@@ -158,7 +159,7 @@ export default function SafetyNetDetailPage() {
             </div>
           ) : null}
 
-          {active && net.isOpen ? (
+          {active && openNow ? (
             <div className="mt-8 w-full rounded-xl bg-marigold/15 p-4 text-[15px] text-marigold-deep">
               The check-in window has passed. Your family can now receive this money using the link below.
             </div>

@@ -8,13 +8,14 @@ import type { SafetyNet } from "@/services/types";
 export function SafetyNetCard({ net }: { net: SafetyNet }) {
   const progress = windowProgress(net.lastCheckInAt, net.unlockAt);
   const { text } = countdown(net.unlockAt);
+  const open = net.status === "ACTIVE" && Date.parse(net.unlockAt) <= Date.now();
 
   const tone =
     net.status === "RECEIVED"
       ? "received"
       : net.status === "CLOSED"
       ? "closed"
-      : net.isOpen
+      : open
       ? "open"
       : "active";
 
@@ -28,7 +29,7 @@ export function SafetyNetCard({ net }: { net: SafetyNet }) {
           <p className="text-[15px] text-subtle">For {net.forName}</p>
           <h3 className="mt-0.5 text-[20px] font-bold text-ink">{net.label}</h3>
         </div>
-        <Badge tone={tone}>{statusLabel(net.status, net.isOpen)}</Badge>
+        <Badge tone={tone}>{statusLabel(net.status, open)}</Badge>
       </div>
 
       <p className="mt-5 font-display text-[34px] font-bold leading-none text-ink">
@@ -39,12 +40,12 @@ export function SafetyNetCard({ net }: { net: SafetyNet }) {
         <div className="mt-5">
           <div className="h-2 w-full overflow-hidden rounded-full bg-line">
             <div
-              className={`h-full rounded-full ${net.isOpen ? "bg-marigold" : "bg-ink"}`}
+              className={`h-full rounded-full ${open ? "bg-marigold" : "bg-ink"}`}
               style={{ width: `${Math.max(4, progress * 100)}%` }}
             />
           </div>
           <p className="mt-2 text-[14px] text-subtle">
-            {net.isOpen ? "Open for your family now" : `Opens to family in ${text} if you don't check in`}
+            {open ? "Open for your family now" : `Opens to family in ${text} if you don't check in`}
           </p>
         </div>
       ) : (

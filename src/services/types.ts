@@ -21,7 +21,7 @@ export interface SafetyNet {
   amount: string;
   forName: string;
   forRelationship: string;
-  checkInIntervalDays: number;
+  checkInIntervalMinutes: number;
   unlockAt: string;
   lastCheckInAt: string;
   claimCode: string;

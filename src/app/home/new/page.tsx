@@ -14,10 +14,10 @@ import { safetyNetService } from "@/services/safety-net-service";
 import type { Recipient } from "@/services/types";
 
 const intervals = [
-  { days: 7, label: "Every week" },
-  { days: 30, label: "Every month" },
-  { days: 90, label: "Every 3 months" },
-  { days: 180, label: "Every 6 months" },
+  { minutes: 3, label: "Every few minutes", note: "For trying it out" },
+  { minutes: 10080, label: "Every week" },
+  { minutes: 43200, label: "Every month" },
+  { minutes: 129600, label: "Every 3 months" },
 ];
 
 export default function NewSafetyNetPage() {
@@ -28,7 +28,7 @@ export default function NewSafetyNetPage() {
   const [recipientId, setRecipientId] = useState<string>("");
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
-  const [intervalDays, setIntervalDays] = useState(30);
+  const [intervalMinutes, setIntervalMinutes] = useState(43200);
 
   const [addingNew, setAddingNew] = useState(false);
   const [newName, setNewName] = useState("");
@@ -98,7 +98,7 @@ export default function NewSafetyNetPage() {
         label,
         amount,
         recipientId,
-        checkInIntervalDays: intervalDays,
+        checkInIntervalMinutes: intervalMinutes,
       });
       router.push(`/home/${net.id}`);
     } catch (err) {
@@ -223,13 +223,22 @@ export default function NewSafetyNetPage() {
           <div className="mt-4 grid grid-cols-2 gap-3">
             {intervals.map((i) => (
               <button
-                key={i.days}
-                onClick={() => setIntervalDays(i.days)}
-                className={`rounded-xl border p-4 text-left text-[17px] font-semibold ${
-                  intervalDays === i.days ? "border-ink bg-ink text-paper" : "border-line bg-white text-ink"
+                key={i.minutes}
+                onClick={() => setIntervalMinutes(i.minutes)}
+                className={`rounded-xl border p-4 text-left ${
+                  intervalMinutes === i.minutes ? "border-ink bg-ink text-paper" : "border-line bg-white text-ink"
                 }`}
               >
-                {i.label}
+                <span className="block text-[17px] font-semibold">{i.label}</span>
+                {i.note ? (
+                  <span
+                    className={`mt-0.5 block text-[13px] ${
+                      intervalMinutes === i.minutes ? "text-paper/80" : "text-subtle"
+                    }`}
+                  >
+                    {i.note}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>

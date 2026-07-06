@@ -13,7 +13,7 @@ type Screen = "loading" | "not-open" | "ready" | "received" | "gone" | "error";
 
 export default function ClaimPage() {
   const params = useParams<{ code: string }>();
-  const code = params.code;
+  const code = params?.code ?? "";
 
   const [screen, setScreen] = useState<Screen>("loading");
   const [info, setInfo] = useState<ClaimInfo | null>(null);
@@ -36,6 +36,21 @@ export default function ClaimPage() {
         setScreen("error");
       });
   }, [code]);
+
+  // While waiting, quietly re-check so the screen opens on its own.
+  useEffect(() => {
+    if (screen !== "not-open") return;
+    const t = setInterval(() => {
+      claimService
+        .lookup(code)
+        .then((data) => {
+          setInfo(data);
+          if (data.isOpen) setScreen("ready");
+        })
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(t);
+  }, [screen, code]);
 
   async function receive() {
     setClaiming(true);

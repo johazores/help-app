@@ -74,7 +74,7 @@ model SafetyNet {
   asset              String          @default("XLM")
   status             SafetyNetStatus @default(ACTIVE)
   balanceId          String? // current Stellar claimable balance id
-  checkInIntervalDays Int            @default(30)
+  checkInIntervalMinutes Int         @default(43200) // default: about one month
   unlockAt           DateTime // date the net opens to family if no check-in
   lastCheckInAt      DateTime        @default(now())
   claimCode          String          @unique

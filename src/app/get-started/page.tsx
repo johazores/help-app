@@ -26,7 +26,7 @@ export default function GetStartedPage() {
     setLoading(true);
     try {
       await authService.signUp({ name, phone, pin });
-      router.push("/home");
+      router.push("/welcome");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setLoading(false);
