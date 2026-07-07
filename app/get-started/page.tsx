@@ -14,6 +14,8 @@ export default function GetStartedPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -23,9 +25,13 @@ export default function GetStartedPage() {
       setError("Please fill in every box. Your PIN needs 6 numbers.");
       return;
     }
+    if (pin !== pinConfirm) {
+      setError("Your PINs don't match. Please type the same 6 numbers twice.");
+      return;
+    }
     setLoading(true);
     try {
-      await authService.signUp({ name, phone, pin });
+      await authService.signUp({ name, phone, pin, email: email || undefined });
       router.push("/welcome");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -72,12 +78,38 @@ export default function GetStartedPage() {
               )}
             </Field>
 
-            <Field label="Create a 6-number PIN" hint="You'll use this every time you sign in." error={error ?? undefined}>
+            <Field label="Email (recommended)" hint="Used to recover your account if you forget your PIN.">
+              {(id) => (
+                <Input
+                  id={id}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                />
+              )}
+            </Field>
+
+            <Field label="Create a 6-number PIN" hint="You'll use this every time you sign in.">
               {(id) => (
                 <Input
                   id={id}
                   value={pin}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="••••••"
+                  inputMode="numeric"
+                  className="tracking-[0.5em]"
+                />
+              )}
+            </Field>
+
+            <Field label="Type your PIN again" error={error ?? undefined}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={pinConfirm}
+                  onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="••••••"
                   inputMode="numeric"
                   className="tracking-[0.5em]"

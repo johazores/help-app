@@ -1,13 +1,14 @@
 import { apiClient } from "@/services/api-client";
-import type { Profile } from "@/services/types";
+import type { Profile, SessionInfo } from "@/services/types";
 
 interface AuthResult {
   token: string;
   user: { id: string; name: string; phone: string };
+  verificationSent?: boolean;
 }
 
 class AuthService {
-  async signUp(input: { name: string; phone: string; pin: string }): Promise<AuthResult> {
+  async signUp(input: { name: string; phone: string; pin: string; email?: string }): Promise<AuthResult> {
     const result = await apiClient.request<AuthResult>("/auth/sign-up", {
       method: "POST",
       body: input,
@@ -35,21 +36,37 @@ class AuthService {
     return Boolean(apiClient.getToken());
   }
 
-  /** Reads the role from the signed token for lightweight UI gating. */
-  getRole(): "USER" | "ROOT" | null {
-    const token = apiClient.getToken();
-    if (!token) return null;
+  async signOut(): Promise<void> {
     try {
-      const [, body] = token.split(".");
-      const payload = JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
-      return payload.role === "ROOT" ? "ROOT" : "USER";
+      await apiClient.request("/auth/sign-out", { method: "POST" });
     } catch {
-      return null;
+      // Even if the network call fails, clear the local token.
     }
+    apiClient.clearToken();
   }
 
-  signOut(): void {
-    apiClient.clearToken();
+  async sessions(): Promise<SessionInfo[]> {
+    return apiClient.request<SessionInfo[]>("/auth/sessions");
+  }
+
+  async revokeSession(sessionId: string): Promise<void> {
+    await apiClient.request("/auth/sessions", { method: "DELETE", body: { sessionId } });
+  }
+
+  async revokeAllOtherSessions(): Promise<void> {
+    await apiClient.request("/auth/sessions", { method: "DELETE", body: { all: true } });
+  }
+
+  async forgotPin(phone: string): Promise<void> {
+    await apiClient.request("/auth/forgot-pin", { method: "POST", body: { phone }, auth: false });
+  }
+
+  async resetPin(phone: string, code: string, newPin: string): Promise<void> {
+    await apiClient.request("/auth/reset-pin", {
+      method: "POST",
+      body: { phone, code, newPin },
+      auth: false,
+    });
   }
 }
 

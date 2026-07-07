@@ -82,17 +82,17 @@ export default function ClaimPage() {
           ) : null}
 
           {screen === "error" ? (
-            <div className="card p-8 text-center">
+            <div className="card overflow-hidden p-6 text-center sm:p-8">
               <h1 className="font-display text-[26px] font-bold text-ink">This link doesn&rsquo;t work</h1>
               <p className="mt-2 text-[17px] text-body">{error}</p>
             </div>
           ) : null}
 
           {screen === "not-open" && info ? (
-            <div className="card p-8 text-center">
-              <p className="text-[16px] text-subtle">From {info.fromName}, for you</p>
-              <h1 className="mt-1 font-display text-[26px] font-bold text-ink">{info.label}</h1>
-              <p className="mt-6 font-display text-[44px] font-bold text-ink">{formatMoney(info.amount)}</p>
+            <div className="card overflow-hidden p-6 text-center sm:p-8">
+              <p className="break-words text-[16px] text-subtle">From {info.fromName}, for you</p>
+              <h1 className="mt-1 break-words font-display text-[26px] font-bold leading-tight text-ink">{info.label}</h1>
+              <p className="mt-6 break-words font-display text-[clamp(32px,9vw,44px)] font-bold leading-tight text-ink">{formatMoney(info.amount)}</p>
               <div className="mt-6 rounded-xl bg-ink/5 p-5 text-[16px] text-body">
                 This isn&rsquo;t open yet. It will become available on{" "}
                 <span className="font-semibold text-ink">{formatDate(info.unlockAt)}</span> if{" "}
@@ -103,10 +103,10 @@ export default function ClaimPage() {
           ) : null}
 
           {screen === "ready" && info ? (
-            <div className="card p-8 text-center">
-              <p className="text-[16px] text-subtle">From {info.fromName}, for you</p>
-              <h1 className="mt-1 font-display text-[26px] font-bold text-ink">{info.label}</h1>
-              <p className="mt-6 font-display text-[46px] font-bold text-ink">{formatMoney(info.amount)}</p>
+            <div className="card overflow-hidden p-6 text-center sm:p-8">
+              <p className="break-words text-[16px] text-subtle">From {info.fromName}, for you</p>
+              <h1 className="mt-1 break-words font-display text-[26px] font-bold leading-tight text-ink">{info.label}</h1>
+              <p className="mt-6 break-words font-display text-[clamp(34px,10vw,46px)] font-bold leading-tight text-ink">{formatMoney(info.amount)}</p>
               <p className="mt-2 text-[16px] text-body">This money is now yours to receive.</p>
               <div className="mt-7">
                 <Button fullWidth loading={claiming} onClick={receive}>
@@ -122,7 +122,7 @@ export default function ClaimPage() {
           ) : null}
 
           {screen === "received" && info ? (
-            <div className="card p-8 text-center">
+            <div className="card overflow-hidden p-6 text-center sm:p-8">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-marigold">
                 <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M5 12.5 10 17 19 7" stroke="#0C3B3A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
@@ -141,7 +141,7 @@ export default function ClaimPage() {
           ) : null}
 
           {screen === "gone" && info ? (
-            <div className="card p-8 text-center">
+            <div className="card overflow-hidden p-6 text-center sm:p-8">
               <h1 className="font-display text-[26px] font-bold text-ink">No longer available</h1>
               <p className="mt-2 text-[17px] text-body">
                 {info.fromName} has taken this money back. Nothing more to do here.

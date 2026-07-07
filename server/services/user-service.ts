@@ -1,66 +1,78 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { hashPin, verifyPin } from "@/lib/crypto";
-import { issueToken } from "@/lib/jwt";
+import { sessionService } from "@/server/services/session-service";
 import { stellarService } from "@/server/services/stellar-service";
+import { mailerService } from "@/server/services/mailer-service";
+import { verificationService } from "@/server/services/verification-service";
 
-function isRootPhone(phone: string): boolean {
-  const root = process.env.ROOT_PHONE;
-  if (!root) return false;
-  try {
-    return normalizePhone(root) === phone;
-  } catch {
-    return false;
-  }
-}
-
-function normalizePhone(input: string): string {
+export function normalizePhone(input: string): string {
   const trimmed = input.replace(/[\s-]/g, "");
   if (!/^(\+?63|0)?9\d{9}$/.test(trimmed)) {
     throw new ApiError(400, "Please enter a valid mobile number.");
   }
-  // Normalize to 09XXXXXXXXX
   const digits = trimmed.replace(/^\+?63/, "0").replace(/^(?!0)/, "0");
   return digits.startsWith("0") ? digits : `0${digits}`;
 }
 
+export function normalizeEmail(input: string): string {
+  const email = input.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    throw new ApiError(400, "Please enter a valid email address.");
+  }
+  return email;
+}
+
 class UserService {
-  async signUp(input: { name: string; phone: string; pin: string }) {
+  async signUp(input: { name: string; phone: string; pin: string; email?: string; device: string }) {
     const name = input.name.trim();
     if (name.length < 2) throw new ApiError(400, "Please enter your name.");
     if (!/^\d{6}$/.test(input.pin)) throw new ApiError(400, "Your PIN must be 6 numbers.");
 
     const phone = normalizePhone(input.phone);
+    const email = input.email?.trim() ? normalizeEmail(input.email) : null;
+
     const existing = await prisma.user.findUnique({ where: { phone } });
     if (existing) throw new ApiError(409, "That mobile number already has an account.");
+    if (email) {
+      const emailTaken = await prisma.user.findUnique({ where: { email } });
+      if (emailTaken) throw new ApiError(409, "That email is already used by another account.");
+    }
 
-    // Give the new user a funded custodial account.
     const account = await stellarService.createFundedAccount();
-
     const user = await prisma.user.create({
       data: {
         name,
         phone,
+        email,
         pinHash: hashPin(input.pin),
-        role: isRootPhone(phone) ? "ROOT" : "USER",
         stellarAccount: { connect: { id: account.id } },
       },
     });
 
-    return { token: issueToken(user), user: this.publicUser(user) };
+    // Best-effort verification email; sign-up must not fail if SMTP is absent.
+    let verificationSent = false;
+    if (email && (await mailerService.isConfigured())) {
+      try {
+        await verificationService.issue(user.id, email, "EMAIL_VERIFY");
+        verificationSent = true;
+      } catch {
+        verificationSent = false;
+      }
+    }
+
+    const token = await sessionService.createForUser(user.id, input.device);
+    return { token, user: { id: user.id, name: user.name, phone: user.phone }, verificationSent };
   }
 
-  async signIn(input: { phone: string; pin: string }) {
+  async signIn(input: { phone: string; pin: string; device: string }) {
     const phone = normalizePhone(input.phone);
-    let user = await prisma.user.findUnique({ where: { phone } });
+    const user = await prisma.user.findUnique({ where: { phone } });
     if (!user || !verifyPin(input.pin, user.pinHash)) {
       throw new ApiError(401, "That mobile number or PIN doesn't match.");
     }
-    // Allow promoting an existing account to admin by setting ROOT_PHONE.
-    if (isRootPhone(phone) && user.role !== "ROOT") {
-      user = await prisma.user.update({ where: { id: user.id }, data: { role: "ROOT" } });
-    }
-    return { token: issueToken(user), user: this.publicUser(user) };
+    const token = await sessionService.createForUser(user.id, input.device);
+    return { token, user: { id: user.id, name: user.name, phone: user.phone } };
   }
 
   async profile(userId: string) {
@@ -74,11 +86,15 @@ class UserService {
     if (user.stellarAccount) {
       balance = await stellarService.availableBalance(user.stellarAccount.publicKey);
     }
-    return { ...this.publicUser(user), balance, role: user.role };
-  }
-
-  private publicUser(user: { id: string; name: string; phone: string; role: "USER" | "ROOT" }) {
-    return { id: user.id, name: user.name, phone: user.phone, role: user.role };
+    return {
+      id: user.id,
+      name: user.name,
+      phone: user.phone,
+      email: user.email,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      avatar: user.avatar,
+      balance,
+    };
   }
 }
 

@@ -82,10 +82,17 @@ touch the database.
   receive is a real transaction submitted to Horizon. The hash is stored and shown as a
   **View record ↗** link (to `stellar.expert/explorer/testnet`) in each safety net’s
   history and throughout the admin panel.
-- **Admin (ROOT) panel.** Set `ROOT_PHONE` in `.env` to a mobile number; when that account
-  signs up or signs in it becomes an admin and gets an **Admin** menu item. The panel
-  (`/admin`) shows totals, the full transaction log with explorer links, every safety net,
-  and every user (public keys only — secret keys are never exposed anywhere).
+- **Admin panel with separate authentication.** Admins are a completely separate identity
+  (username + email + password, own sessions) from app users. Set `ADMIN_USERNAME`,
+  `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in `.env`, run `npm run db:seed`, then sign in at
+  **/admin/sign-in**. The panel (`/admin`) shows totals, the full transaction log with
+  explorer links, every safety net, and every user (public keys only — secret keys are
+  never exposed anywhere).
+- **Account management.** Users get a full account area: profile + photo, add/change email
+  with 6-digit verification codes, change PIN (signs out other devices), forgot-PIN recovery
+  via verified email, and multi-device session management with revocation. Email delivery
+  uses SMTP configured via `SMTP_*` env vars (seeded into the database); without SMTP the
+  app says clearly that email isn't set up rather than pretending to send.
 - **Add funds.** The **Add funds** screen shows a receive address (with QR) that works on
   testnet and mainnet alike, plus an instant test top-up for trying the send/receive flow.
 - **Live rates.** XLM is valued in PHP, USD, USDC, EUR, SAR, AED, SGD, and HKD via CoinGecko

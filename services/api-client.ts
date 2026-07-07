@@ -1,24 +1,34 @@
-const TOKEN_KEY = "sagip.token";
+const USER_TOKEN_KEY = "sagip.token";
+const ADMIN_TOKEN_KEY = "sagip.admin.token";
 
-/** Low-level HTTP client shared by every client service. */
+type Scope = "user" | "admin";
+
+/** Low-level HTTP client shared by every client service. Two token scopes. */
 class ApiClient {
-  getToken(): string | null {
+  private key(scope: Scope): string {
+    return scope === "admin" ? ADMIN_TOKEN_KEY : USER_TOKEN_KEY;
+  }
+
+  getToken(scope: Scope = "user"): string | null {
     if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(TOKEN_KEY);
+    return window.localStorage.getItem(this.key(scope));
   }
 
-  setToken(token: string): void {
-    if (typeof window !== "undefined") window.localStorage.setItem(TOKEN_KEY, token);
+  setToken(token: string, scope: Scope = "user"): void {
+    if (typeof window !== "undefined") window.localStorage.setItem(this.key(scope), token);
   }
 
-  clearToken(): void {
-    if (typeof window !== "undefined") window.localStorage.removeItem(TOKEN_KEY);
+  clearToken(scope: Scope = "user"): void {
+    if (typeof window !== "undefined") window.localStorage.removeItem(this.key(scope));
   }
 
-  async request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
+  async request<T>(
+    path: string,
+    options: { method?: string; body?: unknown; auth?: boolean; scope?: Scope } = {},
+  ): Promise<T> {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (options.auth !== false) {
-      const token = this.getToken();
+      const token = this.getToken(options.scope ?? "user");
       if (token) headers.Authorization = `Bearer ${token}`;
     }
 
@@ -29,11 +39,15 @@ class ApiClient {
     });
 
     const text = await res.text();
-    const data = text ? JSON.parse(text) : null;
+    let data: { error?: string } | null = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
 
     if (!res.ok) {
-      const message = (data && data.error) || "Something went wrong. Please try again.";
-      throw new Error(message);
+      throw new Error(data?.error || "Something went wrong. Please try again.");
     }
     return data as T;
   }

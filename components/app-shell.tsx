@@ -15,6 +15,7 @@ import {
   ShieldIcon,
 } from "@/components/ui/icons";
 import { authService } from "@/services/auth-service";
+import { adminAuthService } from "@/services/admin-auth-service";
 
 const baseNav = [
   { href: "/home", label: "Home", Icon: HomeIcon },
@@ -35,7 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isRoot, setIsRoot] = useState(false);
 
   useEffect(() => {
-    setIsRoot(authService.getRole() === "ROOT");
+    setIsRoot(adminAuthService.isSignedIn());
   }, []);
 
   const nav = isRoot
@@ -43,8 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : baseNav;
 
   function signOut() {
-    authService.signOut();
-    router.push("/sign-in");
+    void authService.signOut().finally(() => router.push("/sign-in"));
   }
 
   return (

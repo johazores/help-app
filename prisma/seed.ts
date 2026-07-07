@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { randomBytes, scryptSync } from "node:crypto";
 
 const prisma = new PrismaClient();
 
@@ -17,7 +18,48 @@ const settings: Record<string, string> = {
   "rates.currencies": "php,usd,eur,sar,aed,sgd,hkd",
 };
 
+function hashSecret(secret: string): string {
+  const salt = randomBytes(16);
+  return `${salt.toString("hex")}:${scryptSync(secret, salt, 32).toString("hex")}`;
+}
+
 async function main() {
+  // Optional SMTP settings (for verification / recovery emails), from env.
+  for (const [envKey, settingKey] of [
+    ["SMTP_HOST", "smtp.host"],
+    ["SMTP_PORT", "smtp.port"],
+    ["SMTP_USER", "smtp.user"],
+    ["SMTP_PASS", "smtp.pass"],
+    ["SMTP_FROM", "smtp.from"],
+  ] as const) {
+    const value = process.env[envKey];
+    if (value) {
+      await prisma.setting.upsert({
+        where: { key: settingKey },
+        update: { value },
+        create: { key: settingKey, value },
+      });
+    }
+  }
+
+  // Bootstrap the root admin from env (updates password if re-run).
+  const { ADMIN_USERNAME, ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME } = process.env;
+  if (ADMIN_USERNAME && ADMIN_EMAIL && ADMIN_PASSWORD) {
+    await prisma.adminUser.upsert({
+      where: { username: ADMIN_USERNAME },
+      update: { email: ADMIN_EMAIL, passwordHash: hashSecret(ADMIN_PASSWORD) },
+      create: {
+        username: ADMIN_USERNAME,
+        email: ADMIN_EMAIL,
+        name: ADMIN_NAME || "Administrator",
+        passwordHash: hashSecret(ADMIN_PASSWORD),
+      },
+    });
+    console.log(`Admin '${ADMIN_USERNAME}' is ready.`);
+  } else {
+    console.log("No ADMIN_USERNAME/ADMIN_EMAIL/ADMIN_PASSWORD in env — skipping admin bootstrap.");
+  }
+
   for (const [key, value] of Object.entries(settings)) {
     await prisma.setting.upsert({
       where: { key },

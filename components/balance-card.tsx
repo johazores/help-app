@@ -19,7 +19,7 @@ export function BalanceCard({ balance }: { balance: string }) {
   return (
     <div className="card bg-ink p-6 text-paper">
       <p className="text-[15px] text-paper/70">Your available funds</p>
-      <p className="mt-1 font-display text-[40px] font-bold leading-none">{formatMoney(balance)}</p>
+      <p className="mt-1 break-words font-display text-[clamp(30px,8vw,40px)] font-bold leading-none">{formatMoney(balance)}</p>
       {php !== undefined ? (
         <p className="mt-2 text-[15px] text-marigold-soft">
           about {formatFiat(convertFromXlm(balance, php), "PHP")} today

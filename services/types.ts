@@ -1,14 +1,24 @@
 export type SafetyNetStatus = "ACTIVE" | "OPENED" | "RECEIVED" | "CLOSED";
 export type ActivityType = "CREATED" | "CHECKED_IN" | "OPENED_TO_FAMILY" | "RECEIVED" | "CLOSED";
 
-export type Role = "USER" | "ROOT";
+export type Role = "USER" | "ROOT"; // retained for AdminUser display only
 
 export interface Profile {
   id: string;
   name: string;
   phone: string;
+  email: string | null;
+  emailVerified: boolean;
+  avatar: string | null;
   balance: string;
-  role: Role;
+}
+
+export interface SessionInfo {
+  id: string;
+  device: string;
+  lastSeenAt: string;
+  createdAt: string;
+  current: boolean;
 }
 
 export interface AppConfig {
@@ -29,7 +39,6 @@ export interface AdminUser {
   id: string;
   name: string;
   phone: string;
-  role: Role;
   publicKey: string | null;
   safetyNets: number;
   recipients: number;

@@ -17,20 +17,72 @@ model User {
   id        String   @id @default(cuid())
   phone     String   @unique
   name      String
-  pinHash   String
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
+  pinHash          String
+  email            String?   @unique
+  emailVerifiedAt  DateTime?
+  avatar           String? // small data-URL image, resized client-side
+  createdAt        DateTime  @default(now())
 
   stellarAccount   StellarAccount? @relation("UserAccount")
   stellarAccountId String?         @unique
 
   recipients Recipient[]
   safetyNets SafetyNet[]
+  sessions   UserSession[]
+  codes      VerificationCode[]
 }
 
-enum Role {
-  USER
-  ROOT
+/// A signed-in device. Tokens carry the session id; revoking kills the token.
+model UserSession {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  device     String
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+/// Root admins: entirely separate identity, credentials, and sessions.
+model AdminUser {
+  id           String         @id @default(cuid())
+  username     String         @unique
+  email        String         @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime       @default(now())
+  sessions     AdminSession[]
+}
+
+model AdminSession {
+  id         String    @id @default(cuid())
+  admin      AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  adminId    String
+  device     String
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([adminId])
+}
+
+/// One-time codes for email verification and PIN recovery.
+model VerificationCode {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  identifier String // the email the code was sent to
+  codeHash   String
+  purpose    String // EMAIL_VERIFY | PIN_RESET
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  @@index([userId, purpose])
 }
 
 /// A custodial Stellar account. Secret is encrypted at rest.

@@ -70,9 +70,11 @@ Custodial means we hold users’ money — the bar is high:
   rest; sign via the KMS.
 - **Account model:** consider per-user keys with a co-signing service, or a master + muxed
   accounts design, so a single leaked key can’t drain everyone.
-- **Auth:** PIN is fine for low-friction UX, but add **rate limiting + lockout** on sign-in
-  and top-ups, **2FA/OTP** for withdrawals, and a **PIN-reset/recovery** flow (currently
-  missing — a locked-out user has no recovery path).
+- **Auth (now built):** sign-in/sign-up **rate limiting**, **PIN recovery** via verified
+  email with one-time codes, **email verification**, **multi-device session management**
+  with revocation, and a **separate admin identity** (username/email/password). Remaining:
+  OTP/2FA for withdrawals; move the in-memory rate limiter to Redis for multi-instance
+  deployments; SMS-based recovery for users without email.
 - **Transaction safety:** idempotency keys on money-moving endpoints, sequence-number
   management under concurrency, retry with backoff, and confirmation screens for
   irreversible actions.

@@ -76,6 +76,12 @@ export default function SignInPage() {
             <Button fullWidth loading={loading} onClick={submit}>
               Sign in
             </Button>
+
+            <p className="text-center">
+              <Link href="/forgot-pin" className="text-[15px] font-semibold text-subtle underline hover:text-ink">
+                Forgot your PIN?
+              </Link>
+            </p>
           </div>
 
           <p className="mt-6 text-center text-[16px] text-subtle">

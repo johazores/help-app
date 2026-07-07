@@ -14,26 +14,78 @@ export class ApiError extends Error {
 export interface AuthedUser {
   id: string;
   name: string;
-  role: "USER" | "ROOT";
+  sessionId: string;
 }
 
-/** Reads and verifies the bearer token, returning the current user. */
-export async function requireUser(req: NextApiRequest): Promise<AuthedUser> {
+export interface AuthedAdmin {
+  id: string;
+  name: string;
+  username: string;
+  sessionId: string;
+}
+
+const SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
+function bearer(req: NextApiRequest): string {
   const header = req.headers.authorization ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const payload = token ? verifyToken(token) : null;
-  if (!payload) throw new ApiError(401, "Please sign in again.");
-
-  const user = await prisma.user.findUnique({ where: { id: payload.sub } });
-  if (!user) throw new ApiError(401, "Please sign in again.");
-  return { id: user.id, name: user.name, role: user.role };
+  return header.startsWith("Bearer ") ? header.slice(7) : "";
 }
 
-/** Like requireUser, but only allows a ROOT (admin) account. */
-export async function requireRoot(req: NextApiRequest): Promise<AuthedUser> {
-  const user = await requireUser(req);
-  if (user.role !== "ROOT") throw new ApiError(403, "You don't have access to this area.");
-  return user;
+/** Verifies the token AND its live session; updates last-seen. */
+export async function requireUser(req: NextApiRequest): Promise<AuthedUser> {
+  const payload = verifyToken(bearer(req));
+  if (!payload || payload.scope !== "user") throw new ApiError(401, "Please sign in again.");
+
+  const session = await prisma.userSession.findUnique({
+    where: { id: payload.sid },
+    include: { user: { select: { id: true, name: true } } },
+  });
+  if (
+    !session ||
+    session.userId !== payload.sub ||
+    session.revokedAt ||
+    session.expiresAt.getTime() < Date.now()
+  ) {
+    throw new ApiError(401, "Please sign in again.");
+  }
+  if (Date.now() - session.lastSeenAt.getTime() > SEEN_THROTTLE_MS) {
+    await prisma.userSession.update({
+      where: { id: session.id },
+      data: { lastSeenAt: new Date() },
+    });
+  }
+  return { id: session.user.id, name: session.user.name, sessionId: session.id };
+}
+
+/** Same, for the fully separate admin identity. */
+export async function requireAdmin(req: NextApiRequest): Promise<AuthedAdmin> {
+  const payload = verifyToken(bearer(req));
+  if (!payload || payload.scope !== "admin") throw new ApiError(401, "Please sign in again.");
+
+  const session = await prisma.adminSession.findUnique({
+    where: { id: payload.sid },
+    include: { admin: { select: { id: true, name: true, username: true } } },
+  });
+  if (
+    !session ||
+    session.adminId !== payload.sub ||
+    session.revokedAt ||
+    session.expiresAt.getTime() < Date.now()
+  ) {
+    throw new ApiError(401, "Please sign in again.");
+  }
+  if (Date.now() - session.lastSeenAt.getTime() > SEEN_THROTTLE_MS) {
+    await prisma.adminSession.update({
+      where: { id: session.id },
+      data: { lastSeenAt: new Date() },
+    });
+  }
+  return {
+    id: session.admin.id,
+    name: session.admin.name,
+    username: session.admin.username,
+    sessionId: session.id,
+  };
 }
 
 /** Restricts a handler to specific HTTP methods. */
@@ -66,4 +118,19 @@ export function handler(
       res.status(500).json({ error: "Something went wrong on our side. Please try again." });
     }
   };
+}
+
+// ---- Minimal in-memory rate limiter for auth endpoints ----------------------
+// Per-process; enough to blunt brute force on a single instance. Documented in
+// PRODUCTION.md as something to move to Redis for multi-instance deployments.
+const buckets = new Map<string, number[]>();
+
+export function rateLimit(key: string, max: number, windowMs: number): void {
+  const now = Date.now();
+  const hits = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (hits.length >= max) {
+    throw new ApiError(429, "Too many attempts. Please wait a moment and try again.");
+  }
+  hits.push(now);
+  buckets.set(key, hits);
 }

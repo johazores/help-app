@@ -32,7 +32,7 @@ export function SafetyNetCard({ net }: { net: SafetyNet }) {
         <Badge tone={tone}>{statusLabel(net.status, open)}</Badge>
       </div>
 
-      <p className="mt-5 font-display text-[34px] font-bold leading-none text-ink">
+      <p className="mt-5 break-words font-display text-[clamp(26px,7vw,34px)] font-bold leading-none text-ink">
         {formatMoney(net.amount)}
       </p>
 

@@ -3,7 +3,7 @@ import type { AdminOverview } from "@/services/types";
 
 class AdminService {
   async overview(): Promise<AdminOverview> {
-    return apiClient.request<AdminOverview>("/admin/overview");
+    return apiClient.request<AdminOverview>("/admin/overview", { scope: "admin" });
   }
 }
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { authService } from "@/services/auth-service";
+import { adminAuthService } from "@/services/admin-auth-service";
 import { adminService } from "@/services/admin-service";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import type { AdminOverview, SafetyNetStatus } from "@/services/types";
@@ -36,24 +36,18 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authService.isSignedIn()) {
-      router.replace("/sign-in");
+    if (!adminAuthService.isSignedIn()) {
+      router.replace("/admin/sign-in");
       return;
     }
-    // Verify against the server (source of truth), not just the token.
-    authService
-      .me()
-      .then((me) => {
-        if (me.role !== "ROOT") {
-          router.replace("/home");
-          return null;
-        }
-        return adminService.overview();
+    adminService
+      .overview()
+      .then(setData)
+      .catch(() => {
+        // Expired or invalid admin session — back to the admin door.
+        adminAuthService.signOut();
+        router.replace("/admin/sign-in");
       })
-      .then((overview) => {
-        if (overview) setData(overview);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load."))
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -88,7 +82,15 @@ export default function AdminPage() {
     <AppShell>
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">Admin</h1>
-        <Badge tone="neutral">{explorer.network}</Badge>
+        <div className="flex items-center gap-3">
+          <Badge tone="neutral">{explorer.network}</Badge>
+          <button
+            onClick={() => adminAuthService.signOut().then(() => router.replace("/admin/sign-in"))}
+            className="text-[14px] font-semibold text-subtle hover:text-ink"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
       <p className="mt-2 text-[16px] text-body">Everything happening across Sagip, in one place.</p>
 
@@ -162,10 +164,7 @@ export default function AdminPage() {
           {users.map((u) => (
             <div key={u.id} className="flex items-center justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="truncate text-[16px] font-semibold text-ink">
-                  {u.name}
-                  {u.role === "ROOT" ? <span className="ml-2 text-[12px] font-bold text-marigold-deep">ADMIN</span> : null}
-                </p>
+                <p className="truncate text-[16px] font-semibold text-ink">{u.name}</p>
                 <p className="text-[14px] text-subtle">
                   {u.phone} · {u.safetyNets} safety nets · {u.recipients} loved ones
                 </p>

@@ -6,14 +6,12 @@ import { settingsService } from "@/server/services/settings-service";
  * public keys (which are safe to share) and on-chain transaction hashes.
  */
 
-type Role = "USER" | "ROOT";
 type Status = "ACTIVE" | "OPENED" | "RECEIVED" | "CLOSED";
 
 interface UserRow {
   id: string;
   name: string;
   phone: string;
-  role: Role;
   createdAt: Date;
   stellarAccount: { publicKey: string } | null;
   _count: { safetyNets: number; recipients: number };
@@ -85,7 +83,6 @@ class AdminService {
         id: u.id,
         name: u.name,
         phone: u.phone,
-        role: u.role,
         publicKey: u.stellarAccount?.publicKey ?? null,
         safetyNets: u._count.safetyNets,
         recipients: u._count.recipients,

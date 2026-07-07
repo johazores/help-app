@@ -127,9 +127,9 @@ export default function SafetyNetDetailPage() {
       </Link>
 
       <div className="mt-3 flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <p className="text-[16px] text-subtle">For {net.forName} · {net.forRelationship}</p>
-          <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">{net.label}</h1>
+          <h1 className="break-words font-display text-[28px] font-bold leading-tight text-ink sm:text-[36px]">{net.label}</h1>
         </div>
         <Badge tone={tone}>{statusLabel(net.status, openNow)}</Badge>
       </div>
@@ -154,7 +154,7 @@ export default function SafetyNetDetailPage() {
       <div className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         {/* Left: the lifeline + primary action */}
         <div className="card flex flex-col items-center p-8 text-center">
-          <p className="font-display text-[44px] font-bold leading-none text-ink">
+          <p className="break-words font-display text-[clamp(34px,9vw,44px)] font-bold leading-none text-ink">
             {formatMoney(net.amount)}
           </p>
           <p className="mt-2 text-[15px] text-subtle">set aside</p>
@@ -200,7 +200,7 @@ export default function SafetyNetDetailPage() {
                 receive it here — no account needed.
               </p>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                <code className="flex-1 truncate rounded-xl border border-line bg-paper px-4 py-3 text-[15px] text-ink">
+                <code className="min-w-0 flex-1 break-all rounded-xl border border-line bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink sm:text-[14px]">
                   {typeof window !== "undefined" ? `${window.location.origin}/claim/${net.claimCode}` : `…/claim/${net.claimCode}`}
                 </code>
                 <Button size="md" variant="secondary" onClick={copyLink}>

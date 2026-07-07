@@ -90,7 +90,7 @@ export default function DepositPage() {
         <div className="space-y-6">
           <div className="card bg-ink p-6 text-paper">
             <p className="text-[15px] text-paper/70">You have</p>
-            <p className="mt-1 font-display text-[40px] font-bold leading-none">
+            <p className="mt-1 break-words font-display text-[clamp(30px,8vw,40px)] font-bold leading-none">
               {formatMoney(info?.balance ?? "0")}
             </p>
             {php !== undefined ? (
@@ -131,7 +131,7 @@ export default function DepositPage() {
           <div className="mt-5">
             <p className="field-label">Your address</p>
             <div className="flex flex-col gap-3 sm:flex-row">
-              <code className="flex-1 break-all rounded-xl border border-line bg-paper px-4 py-3 text-[13px] text-ink">
+              <code className="min-w-0 flex-1 break-all rounded-xl border border-line bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink">
                 {info?.address}
               </code>
               <Button size="md" variant="secondary" onClick={copy}>
