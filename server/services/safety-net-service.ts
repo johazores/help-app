@@ -82,8 +82,8 @@ class SafetyNetService {
       throw new ApiError(400, "Please enter how much you want to set aside.");
     }
     const interval = Math.round(input.checkInIntervalMinutes);
-    // 3 = a short "try it out" window; the rest are week / month / 3 months.
-    if (![3, 10080, 43200, 129600].includes(interval)) {
+    // 1 = a one-minute "try it out" window; the rest are week / month / 3 months.
+    if (![1, 10080, 43200, 129600].includes(interval)) {
       throw new ApiError(400, "Please choose how often you'll check in.");
     }
 
@@ -209,7 +209,11 @@ class SafetyNetService {
   async lookupByCode(code: string) {
     const net = await prisma.safetyNet.findUnique({
       where: { claimCode: code },
-      include: { recipient: true, owner: true },
+      include: {
+        recipient: true,
+        owner: true,
+        activity: { where: { type: ActivityType.RECEIVED }, take: 1 },
+      },
     });
     if (!net) throw new ApiError(404, "This link doesn't lead to anything.");
     const now = Date.now();
@@ -222,6 +226,7 @@ class SafetyNetService {
       status: net.status,
       isOpen,
       unlockAt: net.unlockAt.toISOString(),
+      receivedTxHash: net.activity[0]?.txHash ?? null,
     };
   }
 

@@ -162,7 +162,7 @@ Open http://localhost:3000.
 ## A 3-minute demo script
 
 The app has a **built-in demo mode**: when you create a safety net, choose
-**“Every few minutes”** as the check-in frequency. That compresses the whole lifecycle —
+**“Every minute”** as the check-in frequency. That compresses the whole lifecycle —
 set aside → check in → lapse → family receives — into a couple of minutes so you can show
 it live. No code changes needed.
 

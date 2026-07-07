@@ -127,6 +127,7 @@ export interface ClaimInfo {
   status: SafetyNetStatus;
   isOpen: boolean;
   unlockAt: string;
+  receivedTxHash: string | null;
 }
 
 export interface Rates {

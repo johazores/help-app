@@ -24,7 +24,7 @@ const MIN_AMOUNT = 1;
 
 function intervalLabel(minutes: number): string {
   const found = [
-    { minutes: 3, label: "every few minutes" },
+    { minutes: 1, label: "every minute" },
     { minutes: 10080, label: "every week" },
     { minutes: 43200, label: "every month" },
     { minutes: 129600, label: "every 3 months" },
@@ -33,7 +33,7 @@ function intervalLabel(minutes: number): string {
 }
 
 const intervals = [
-  { minutes: 3, label: "Every few minutes", note: "For trying it out" },
+  { minutes: 1, label: "Every minute", note: "For trying it out" },
   { minutes: 10080, label: "Every week" },
   { minutes: 43200, label: "Every month" },
   { minutes: 129600, label: "Every 3 months" },

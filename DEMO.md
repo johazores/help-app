@@ -42,7 +42,7 @@ uses the plain, non-technical language the app itself uses. Presenter notes (the
 ### 3. Set money aside *(20 seconds)*
 - Give it a short name: **Monthly support**.
 - Enter an amount: **15000**.
-- For **“How often will you check in?”**, choose **Every few minutes** — this is the
+- For **“How often will you check in?”**, choose **Every minute** — this is the
   demo option that lets us see the whole story in one sitting.
 - Tap **Set aside money**.
 
@@ -91,7 +91,7 @@ without her.”*
 
 ## Tips for a smooth demo
 
-- **Use “Every few minutes.”** It’s built for exactly this. In real life people would
+- **Use “Every minute.”** It’s built for exactly this. In real life people would
   pick weekly, monthly, and so on.
 - **Open the family link in a separate tab or your phone** before the timer runs out, so
   the automatic “now open” flip is visible.
