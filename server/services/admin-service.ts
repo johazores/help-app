@@ -13,7 +13,8 @@ interface UserRow {
   name: string;
   phone: string;
   createdAt: Date;
-  stellarAccount: { publicKey: string } | null;
+  activeWalletId: string | null;
+  wallets: { id: string; stellarAccount: { publicKey: string } }[];
   _count: { safetyNets: number; recipients: number };
 }
 
@@ -50,7 +51,7 @@ class AdminService {
         prisma.user.findMany({
           orderBy: { createdAt: "desc" },
           include: {
-            stellarAccount: { select: { publicKey: true } },
+            wallets: { select: { id: true, stellarAccount: { select: { publicKey: true } } } },
             _count: { select: { safetyNets: true, recipients: true } },
           },
         }) as unknown as Promise<UserRow[]>,
@@ -83,7 +84,9 @@ class AdminService {
         id: u.id,
         name: u.name,
         phone: u.phone,
-        publicKey: u.stellarAccount?.publicKey ?? null,
+        publicKey:
+          (u.wallets.find((w: { id: string }) => w.id === u.activeWalletId) ?? u.wallets[0])?.stellarAccount
+            .publicKey ?? null,
         safetyNets: u._count.safetyNets,
         recipients: u._count.recipients,
         createdAt: u.createdAt.toISOString(),

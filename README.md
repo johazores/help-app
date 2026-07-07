@@ -88,6 +88,13 @@ touch the database.
   **/admin/sign-in**. The panel (`/admin`) shows totals, the full transaction log with
   explorer links, every safety net, and every user (public keys only — secret keys are
   never exposed anywhere).
+- **Wallet onboarding & management.** After sign-up, people choose **Create a new wallet**
+  (guided flow with a one-time recovery-key reveal and save confirmation) or **I already
+  have a wallet** (paste a recovery key; unfunded keys are activated automatically on
+  testnet). The **Wallets** page supports multiple wallets: switch the active one (with a
+  confirmation dialog), rename, add or import more, and reveal a recovery key behind a PIN
+  check. Safety nets stay pinned to the wallet that created them, so check-ins keep working
+  after switching.
 - **Account management.** Users get a full account area: profile + photo, add/change email
   with 6-digit verification codes, change PIN (signs out other devices), forgot-PIN recovery
   via verified email, and multi-device session management with revocation. Email delivery

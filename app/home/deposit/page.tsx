@@ -36,7 +36,15 @@ export default function DepositPage() {
         return QRCode.toDataURL(d.address, { margin: 1, width: 220, color: { dark: "#0C3B3A", light: "#FFFFFF" } });
       })
       .then((url) => setQr(url))
-      .catch(() => authService.signOut())
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : "";
+        if (msg.includes("wallet")) {
+          router.replace("/wallet-setup");
+          return;
+        }
+        void authService.signOut();
+        router.replace("/sign-in");
+      })
       .finally(() => setLoading(false));
     ratesService.get().then(setRates).catch(() => {});
   }, [router]);
@@ -89,7 +97,9 @@ export default function DepositPage() {
         {/* Balance + test funds */}
         <div className="space-y-6">
           <div className="card bg-ink p-6 text-paper">
-            <p className="text-[15px] text-paper/70">You have</p>
+            <p className="text-[15px] text-paper/70">
+              {info?.walletName ? `${info.walletName} has` : "You have"}
+            </p>
             <p className="mt-1 break-words font-display text-[clamp(30px,8vw,40px)] font-bold leading-none">
               {formatMoney(info?.balance ?? "0")}
             </p>

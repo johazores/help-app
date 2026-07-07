@@ -11,6 +11,17 @@ export interface Profile {
   emailVerified: boolean;
   avatar: string | null;
   balance: string;
+  hasWallet: boolean;
+  activeWalletName: string | null;
+}
+
+export interface WalletInfo {
+  id: string;
+  name: string;
+  imported: boolean;
+  address: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface SessionInfo {
@@ -128,4 +139,5 @@ export interface Rates {
 export interface DepositInfo {
   address: string;
   balance: string;
+  walletName: string;
 }

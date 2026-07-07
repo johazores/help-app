@@ -31,7 +31,24 @@ You’ll see a short, friendly welcome. Read it, or tap **Skip** to jump in.
 
 ---
 
-## Step 2 — Add a loved one
+## Step 2 — Set up your wallet
+
+Your wallet is where your money lives. Right after the welcome, you'll see two choices:
+
+- **Create a new wallet** — best for most people. Tap it and everything is set up for you
+  in a few seconds. You'll then see your **recovery key**: save it somewhere safe (a
+  password manager or a written note at home), tick "I've saved it," and continue. Don't
+  worry — we also keep your wallet safe on our side, so you can always sign in with your
+  mobile number and PIN.
+- **I already have a wallet** — if you saved a recovery key before, paste it here and
+  we'll bring your wallet in.
+
+You can add more wallets later from **Wallets** in the menu — switch between them, rename
+them, or show a recovery key (your PIN is required for that).
+
+---
+
+## Step 3 — Add a loved one
 
 This is the person you want to look after.
 
@@ -45,7 +62,7 @@ You can add as many people as you like.
 
 ---
 
-## Step 3 — Set money aside
+## Step 4 — Set money aside
 
 1. Tap the big **＋ Set aside** button at the bottom.
 2. **Choose who it’s for** from your loved ones.
@@ -58,7 +75,7 @@ That’s it. The money is now kept safe, and it’s still completely yours.
 
 ---
 
-## Step 4 — Check in
+## Step 5 — Check in
 
 Checking in is how you tell Sagip you’re okay.
 
@@ -74,7 +91,7 @@ Checking in resets it.
 
 ---
 
-## Step 5 — Share the link with your family
+## Step 6 — Share the link with your family
 
 So your loved one can receive the money if they ever need to:
 

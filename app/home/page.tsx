@@ -25,6 +25,10 @@ export default function HomePage() {
     }
     Promise.all([authService.me(), safetyNetService.list()])
       .then(([p, n]) => {
+        if (!p.hasWallet) {
+          router.replace("/wallet-setup");
+          return;
+        }
         setProfile(p);
         setNets(n);
       })

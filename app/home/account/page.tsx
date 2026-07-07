@@ -393,6 +393,15 @@ export default function AccountPage() {
 
         {/* Quick links + sign out */}
         <div className="space-y-4 lg:col-span-2">
+          <Link href="/home/wallets" className="block">
+            <div className="card flex items-center justify-between p-6 hover:shadow-lift">
+              <div>
+                <p className="text-[17px] font-semibold text-ink">Your wallets</p>
+                <p className="text-[15px] text-subtle">Switch, rename, add, or back up wallets</p>
+              </div>
+              <span className="text-[22px] text-subtle">→</span>
+            </div>
+          </Link>
           <Link href="/home/deposit" className="block">
             <div className="card flex items-center justify-between p-6 hover:shadow-lift">
               <div>

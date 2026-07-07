@@ -58,6 +58,55 @@ class StellarService {
     return { id: account.id, publicKey: account.publicKey };
   }
 
+  /**
+   * Imports a user-provided secret key: validates it, funds the account via
+   * Friendbot if it doesn't exist on the network yet, and stores it encrypted.
+   */
+  async importAccount(secretKey: string): Promise<StoredAccount> {
+    let keypair: Keypair;
+    try {
+      keypair = Keypair.fromSecret(secretKey.trim());
+    } catch {
+      throw new ApiError(400, "That doesn't look like a valid recovery key. It starts with S and has 56 characters.");
+    }
+
+    const existing = await prisma.stellarAccount.findUnique({
+      where: { publicKey: keypair.publicKey() },
+    });
+    if (existing) {
+      throw new ApiError(409, "That wallet is already set up in Sagip.");
+    }
+
+    // If the account isn't on the network yet, activate it (testnet Friendbot).
+    const svr = await server();
+    try {
+      await svr.loadAccount(keypair.publicKey());
+    } catch {
+      const { friendbotUrl } = await settingsService.stellar();
+      const res = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(keypair.publicKey())}`);
+      if (!res.ok) {
+        throw new ApiError(502, "We couldn't activate that wallet right now. Please try again.");
+      }
+    }
+
+    const enc = encryptSecret(keypair.secret());
+    const account = await prisma.stellarAccount.create({
+      data: {
+        publicKey: keypair.publicKey(),
+        encryptedSecret: enc.cipherText,
+        encryptionIv: enc.iv,
+        encryptionTag: enc.tag,
+      },
+    });
+    return { id: account.id, publicKey: account.publicKey };
+  }
+
+  /** Decrypts and returns a secret key (guarded upstream by PIN verification). */
+  async revealSecret(stellarAccountId: string): Promise<string> {
+    const keypair = await this.keypairFor(stellarAccountId);
+    return keypair.secret();
+  }
+
   private async keypairFor(stellarAccountId: string): Promise<Keypair> {
     const account = await prisma.stellarAccount.findUnique({ where: { id: stellarAccountId } });
     if (!account) throw new ApiError(404, "Account not found.");

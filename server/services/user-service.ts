@@ -39,15 +39,10 @@ class UserService {
       if (emailTaken) throw new ApiError(409, "That email is already used by another account.");
     }
 
-    const account = await stellarService.createFundedAccount();
+    // No wallet yet — the person chooses to create or import one right after
+    // sign-up, in the wallet onboarding flow.
     const user = await prisma.user.create({
-      data: {
-        name,
-        phone,
-        email,
-        pinHash: hashPin(input.pin),
-        stellarAccount: { connect: { id: account.id } },
-      },
+      data: { name, phone, email, pinHash: hashPin(input.pin) },
     });
 
     // Best-effort verification email; sign-up must not fail if SMTP is absent.
@@ -78,13 +73,15 @@ class UserService {
   async profile(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: { stellarAccount: true },
+      include: { wallets: { include: { stellarAccount: true } } },
     });
     if (!user) throw new ApiError(404, "Account not found.");
 
+    const active =
+      user.wallets.find((w: { id: string; name: string; stellarAccount: { publicKey: string } }) => w.id === user.activeWalletId) ?? user.wallets[0] ?? null;
     let balance = "0";
-    if (user.stellarAccount) {
-      balance = await stellarService.availableBalance(user.stellarAccount.publicKey);
+    if (active) {
+      balance = await stellarService.availableBalance(active.stellarAccount.publicKey);
     }
     return {
       id: user.id,
@@ -94,6 +91,8 @@ class UserService {
       emailVerified: Boolean(user.emailVerifiedAt),
       avatar: user.avatar,
       balance,
+      hasWallet: user.wallets.length > 0,
+      activeWalletName: active?.name ?? null,
     };
   }
 }

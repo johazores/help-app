@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { stellarService } from "@/server/services/stellar-service";
 import { recipientService } from "@/server/services/recipient-service";
+import { walletService } from "@/server/services/wallet-service";
 
 const MINUTE_MS = 60 * 1000;
 
@@ -86,20 +87,15 @@ class SafetyNetService {
       throw new ApiError(400, "Please choose how often you'll check in.");
     }
 
-    const owner = await prisma.user.findUnique({
-      where: { id: ownerId },
-      include: { stellarAccount: true },
-    });
-    if (!owner?.stellarAccount) throw new ApiError(400, "Your account isn't ready yet.");
-
+    const wallet = await walletService.requireActive(ownerId);
     const recipient = await recipientService.requireOwned(ownerId, input.recipientId);
 
     const unlockAt = new Date(Date.now() + interval * MINUTE_MS);
     const amountStr = amount.toFixed(7);
 
     const { balanceId, txHash } = await stellarService.openSafetyNet({
-      ownerAccountId: owner.stellarAccount.id,
-      ownerPublicKey: owner.stellarAccount.publicKey,
+      ownerAccountId: wallet.stellarAccount.id,
+      ownerPublicKey: wallet.stellarAccount.publicKey,
       recipientPublicKey: recipient.stellarAccount.publicKey,
       amount: amountStr,
       unlockAt,
@@ -108,6 +104,7 @@ class SafetyNetService {
     const net = await prisma.safetyNet.create({
       data: {
         ownerId,
+        walletId: wallet.id,
         recipientId: recipient.id,
         label,
         amount: amountStr,
@@ -132,7 +129,10 @@ class SafetyNetService {
   async checkIn(ownerId: string, id: string) {
     const net = await prisma.safetyNet.findFirst({
       where: { id, ownerId },
-      include: { recipient: { include: { stellarAccount: true } } },
+      include: {
+        recipient: { include: { stellarAccount: true } },
+        wallet: { include: { stellarAccount: true } },
+      },
     });
     if (!net) throw new ApiError(404, "We couldn't find that safety net.");
     if (net.status !== SafetyNetStatus.ACTIVE) {
@@ -140,16 +140,10 @@ class SafetyNetService {
     }
     if (!net.balanceId) throw new ApiError(409, "This safety net isn't ready yet.");
 
-    const owner = await prisma.user.findUnique({
-      where: { id: ownerId },
-      include: { stellarAccount: true },
-    });
-    if (!owner?.stellarAccount) throw new ApiError(400, "Your account isn't ready.");
-
     const newUnlockAt = new Date(Date.now() + net.checkInIntervalMinutes * MINUTE_MS);
     const { balanceId, txHash } = await stellarService.resetSafetyNet({
-      ownerAccountId: owner.stellarAccount.id,
-      ownerPublicKey: owner.stellarAccount.publicKey,
+      ownerAccountId: net.wallet.stellarAccount.id,
+      ownerPublicKey: net.wallet.stellarAccount.publicKey,
       recipientPublicKey: net.recipient.stellarAccount.publicKey,
       currentBalanceId: net.balanceId,
       amount: net.amount,
@@ -176,22 +170,19 @@ class SafetyNetService {
   }
 
   async close(ownerId: string, id: string) {
-    const net = await prisma.safetyNet.findFirst({ where: { id, ownerId } });
+    const net = await prisma.safetyNet.findFirst({
+      where: { id, ownerId },
+      include: { wallet: { include: { stellarAccount: true } } },
+    });
     if (!net) throw new ApiError(404, "We couldn't find that safety net.");
     if (net.status !== SafetyNetStatus.ACTIVE) {
       throw new ApiError(409, "This safety net is already finished.");
     }
     if (!net.balanceId) throw new ApiError(409, "This safety net isn't ready yet.");
 
-    const owner = await prisma.user.findUnique({
-      where: { id: ownerId },
-      include: { stellarAccount: true },
-    });
-    if (!owner?.stellarAccount) throw new ApiError(400, "Your account isn't ready.");
-
     const { txHash } = await stellarService.reclaimToOwner({
-      ownerAccountId: owner.stellarAccount.id,
-      ownerPublicKey: owner.stellarAccount.publicKey,
+      ownerAccountId: net.wallet.stellarAccount.id,
+      ownerPublicKey: net.wallet.stellarAccount.publicKey,
       balanceId: net.balanceId,
     });
 

@@ -35,7 +35,7 @@ export default function WelcomePage() {
   const slide = slides[index];
 
   function finish() {
-    router.push("/home");
+    router.push("/wallet-setup");
   }
 
   return (
