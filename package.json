@@ -2,10 +2,10 @@
   "name": "sagip",
   "version": "1.0.0",
   "private": true,
-  "description": "Sagip — set aside money for the people you love, on Stellar.",
+  "description": "Sagip \u2014 set aside money for the people you love, on Stellar.",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "node scripts/clean-stale.js && prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
