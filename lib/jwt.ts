@@ -10,6 +10,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 interface TokenPayload {
   sub: string; // user id
   name: string;
+  role: "USER" | "ROOT";
   iat: number;
   exp: number;
 }
@@ -30,12 +31,13 @@ function sign(data: string): string {
   return createHmac("sha256", secret()).update(data).digest("base64url");
 }
 
-export function issueToken(user: { id: string; name: string }): string {
+export function issueToken(user: { id: string; name: string; role: "USER" | "ROOT" }): string {
   const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const now = Math.floor(Date.now() / 1000);
   const payload: TokenPayload = {
     sub: user.id,
     name: user.name,
+    role: user.role,
     iat: now,
     exp: now + TOKEN_TTL_SECONDS,
   };

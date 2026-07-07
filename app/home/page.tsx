@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { SafetyNetCard } from "@/components/safety-net-card";
+import { BalanceCard } from "@/components/balance-card";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
@@ -58,6 +59,10 @@ export default function HomePage() {
             <Button size="md">Set aside money</Button>
           </Link>
         ) : null}
+      </div>
+
+      <div className="mt-6">
+        <BalanceCard balance={profile?.balance ?? "0"} />
       </div>
 
       {nets.length === 0 ? (

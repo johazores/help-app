@@ -14,6 +14,7 @@ export class ApiError extends Error {
 export interface AuthedUser {
   id: string;
   name: string;
+  role: "USER" | "ROOT";
 }
 
 /** Reads and verifies the bearer token, returning the current user. */
@@ -25,7 +26,14 @@ export async function requireUser(req: NextApiRequest): Promise<AuthedUser> {
 
   const user = await prisma.user.findUnique({ where: { id: payload.sub } });
   if (!user) throw new ApiError(401, "Please sign in again.");
-  return { id: user.id, name: user.name };
+  return { id: user.id, name: user.name, role: user.role };
+}
+
+/** Like requireUser, but only allows a ROOT (admin) account. */
+export async function requireRoot(req: NextApiRequest): Promise<AuthedUser> {
+  const user = await requireUser(req);
+  if (user.role !== "ROOT") throw new ApiError(403, "You don't have access to this area.");
+  return user;
 }
 
 /** Restricts a handler to specific HTTP methods. */

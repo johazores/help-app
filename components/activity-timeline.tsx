@@ -11,7 +11,13 @@ const dot: Record<Activity["type"], string> = {
   CLOSED: "bg-line",
 };
 
-export function ActivityTimeline({ items }: { items: Activity[] }) {
+export function ActivityTimeline({
+  items,
+  explorerTxUrl,
+}: {
+  items: Activity[];
+  explorerTxUrl?: string;
+}) {
   if (items.length === 0) {
     return <p className="hint">Nothing has happened yet.</p>;
   }
@@ -24,6 +30,16 @@ export function ActivityTimeline({ items }: { items: Activity[] }) {
           />
           <p className="text-[16px] font-medium text-ink">{a.description}</p>
           <p className="mt-0.5 text-[14px] text-subtle">{formatDateTime(a.createdAt)}</p>
+          {a.txHash && explorerTxUrl ? (
+            <a
+              href={`${explorerTxUrl}${a.txHash}`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-[13px] font-semibold text-sage hover:text-ink"
+            >
+              View record ↗
+            </a>
+          ) : null}
         </li>
       ))}
     </ol>

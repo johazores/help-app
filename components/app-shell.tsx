@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
@@ -12,10 +12,11 @@ import {
   MenuIcon,
   PeopleIcon,
   PlusIcon,
+  ShieldIcon,
 } from "@/components/ui/icons";
 import { authService } from "@/services/auth-service";
 
-const nav = [
+const baseNav = [
   { href: "/home", label: "Home", Icon: HomeIcon },
   { href: "/home/people", label: "Loved ones", Icon: PeopleIcon },
   { href: "/home/guide", label: "How it works", Icon: GuideIcon },
@@ -31,6 +32,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isRoot, setIsRoot] = useState(false);
+
+  useEffect(() => {
+    setIsRoot(authService.getRole() === "ROOT");
+  }, []);
+
+  const nav = isRoot
+    ? [...baseNav, { href: "/admin", label: "Admin", Icon: ShieldIcon }]
+    : baseNav;
 
   function signOut() {
     authService.signOut();
@@ -112,9 +122,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </nav>
 
             <Link
+              href="/home/deposit"
+              onClick={() => setDrawerOpen(false)}
+              className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-line px-4 py-3.5 text-[17px] font-semibold text-ink hover:bg-ink/5"
+            >
+              Add funds
+            </Link>
+
+            <Link
               href="/home/new"
               onClick={() => setDrawerOpen(false)}
-              className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-marigold px-4 py-3.5 text-[17px] font-semibold text-ink"
+              className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-marigold px-4 py-3.5 text-[17px] font-semibold text-ink"
             >
               <PlusIcon className="h-5 w-5" /> Set aside money
             </Link>

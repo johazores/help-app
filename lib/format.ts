@@ -56,3 +56,44 @@ export function statusLabel(status: SafetyNetStatus, isOpen: boolean): string {
   if (isOpen) return "Open to family";
   return "Watching over";
 }
+
+// ---- Currency / rates -------------------------------------------------------
+
+export interface CurrencyMeta {
+  code: string;
+  label: string;
+  symbol: string;
+  locale: string;
+}
+
+// Ordered for our audience: home currency first, then major OFW destinations.
+export const CURRENCIES: CurrencyMeta[] = [
+  { code: "PHP", label: "Philippine peso", symbol: "\u20B1", locale: "en-PH" },
+  { code: "USD", label: "US dollar", symbol: "$", locale: "en-US" },
+  { code: "USDC", label: "USD Coin", symbol: "$", locale: "en-US" },
+  { code: "EUR", label: "Euro", symbol: "\u20AC", locale: "en-IE" },
+  { code: "SAR", label: "Saudi riyal", symbol: "SAR ", locale: "en" },
+  { code: "AED", label: "UAE dirham", symbol: "AED ", locale: "en" },
+  { code: "SGD", label: "Singapore dollar", symbol: "S$", locale: "en-SG" },
+  { code: "HKD", label: "Hong Kong dollar", symbol: "HK$", locale: "en-HK" },
+];
+
+export function currencyMeta(code: string): CurrencyMeta {
+  return CURRENCIES.find((c) => c.code === code) ?? { code, label: code, symbol: "", locale: "en" };
+}
+
+/** Convert an XLM amount to a fiat currency using a rate (fiat per 1 XLM). */
+export function convertFromXlm(xlm: string | number, rate: number): number {
+  const n = typeof xlm === "string" ? Number(xlm) : xlm;
+  if (!Number.isFinite(n) || !Number.isFinite(rate)) return 0;
+  return n * rate;
+}
+
+export function formatFiat(amount: number, code: string): string {
+  const meta = currencyMeta(code);
+  const value = amount.toLocaleString(meta.locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return `${meta.symbol}${value}`;
+}

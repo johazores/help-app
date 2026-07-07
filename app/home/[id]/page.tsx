@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
+import { configService } from "@/services/config-service";
 import { countdown, formatMoney, statusLabel, windowProgress } from "@/lib/format";
-import type { SafetyNetDetail } from "@/services/types";
+import type { AppConfig, SafetyNetDetail } from "@/services/types";
 
 export default function SafetyNetDetailPage() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function SafetyNetDetailPage() {
   const id = params?.id ?? "";
 
   const [net, setNet] = useState<SafetyNetDetail | null>(null);
+  const [config, setConfig] = useState<AppConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"checkin" | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export default function SafetyNetDetailPage() {
       return;
     }
     load();
+    configService.get().then(setConfig).catch(() => {});
   }, [load, router]);
 
   // Live-updating countdown.
@@ -189,7 +192,7 @@ export default function SafetyNetDetailPage() {
           <div className="card p-6">
             <h2 className="text-[18px] font-bold text-ink">History</h2>
             <div className="mt-5">
-              <ActivityTimeline items={net.activity} />
+              <ActivityTimeline items={net.activity} explorerTxUrl={config?.explorerTxUrl} />
             </div>
           </div>
 

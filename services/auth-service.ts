@@ -35,6 +35,19 @@ class AuthService {
     return Boolean(apiClient.getToken());
   }
 
+  /** Reads the role from the signed token for lightweight UI gating. */
+  getRole(): "USER" | "ROOT" | null {
+    const token = apiClient.getToken();
+    if (!token) return null;
+    try {
+      const [, body] = token.split(".");
+      const payload = JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
+      return payload.role === "ROOT" ? "ROOT" : "USER";
+    } catch {
+      return null;
+    }
+  }
+
   signOut(): void {
     apiClient.clearToken();
   }

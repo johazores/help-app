@@ -11,6 +11,18 @@ export interface StellarConfig {
   networkPassphrase: string;
 }
 
+export interface ExplorerConfig {
+  network: string;
+  explorerTxUrl: string;
+  explorerAccountUrl: string;
+}
+
+export interface RatesConfig {
+  url: string;
+  coinId: string;
+  currencies: string[];
+}
+
 class SettingsService {
   private cache: Map<string, string> = new Map();
 
@@ -29,6 +41,24 @@ class SettingsService {
       this.get("stellar.networkPassphrase"),
     ]);
     return { horizonUrl, friendbotUrl, networkPassphrase };
+  }
+
+  async explorer(): Promise<ExplorerConfig> {
+    const [network, explorerTxUrl, explorerAccountUrl] = await Promise.all([
+      this.get("stellar.network"),
+      this.get("stellar.explorerTxUrl"),
+      this.get("stellar.explorerAccountUrl"),
+    ]);
+    return { network, explorerTxUrl, explorerAccountUrl };
+  }
+
+  async rates(): Promise<RatesConfig> {
+    const [url, coinId, currencies] = await Promise.all([
+      this.get("rates.url"),
+      this.get("rates.coinId"),
+      this.get("rates.currencies"),
+    ]);
+    return { url, coinId, currencies: currencies.split(",").map((c) => c.trim()) };
   }
 }
 

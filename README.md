@@ -70,6 +70,33 @@ touch the database.
 > Under the hood this runs on **Stellar testnet** and uses test XLM as stand-in “money.”
 > The UI keeps amounts as plain numbers and never shows technical units.
 
+## Testnet, real transactions & the admin panel
+
+- **It’s the live Stellar testnet.** Network settings are seeded in `prisma/seed.ts`
+  (Horizon `horizon-testnet.stellar.org`, Friendbot `friendbot.stellar.org`, passphrase
+  `Test SDF Network ; September 2015`). Accounts are auto-created and funded with test XLM
+  via Friendbot — no real money. Explore or build transactions yourself at
+  [lab.stellar.org](https://lab.stellar.org). Note: testnet is reset a few times a year,
+  which wipes all accounts and history.
+- **Transactions are real and verifiable.** Every set-aside, check-in, take-back and
+  receive is a real transaction submitted to Horizon. The hash is stored and shown as a
+  **View record ↗** link (to `stellar.expert/explorer/testnet`) in each safety net’s
+  history and throughout the admin panel.
+- **Admin (ROOT) panel.** Set `ROOT_PHONE` in `.env` to a mobile number; when that account
+  signs up or signs in it becomes an admin and gets an **Admin** menu item. The panel
+  (`/admin`) shows totals, the full transaction log with explorer links, every safety net,
+  and every user (public keys only — secret keys are never exposed anywhere).
+- **Add funds.** The **Add funds** screen shows a receive address (with QR) that works on
+  testnet and mainnet alike, plus an instant test top-up for trying the send/receive flow.
+- **Live rates.** XLM is valued in PHP, USD, USDC, EUR, SAR, AED, SGD, and HKD via CoinGecko
+  (cached server-side, refreshed each minute), shown on balances and on the Add-funds screen.
+- **End-to-end test.** `npm run e2e` funds a sender and recipient on testnet, sets money
+  aside, receives it, and asserts balances + fees on-chain — proof the flow really works.
+
+See **[PRODUCTION.md](./PRODUCTION.md)** for the full path-to-production plan (the biggest
+items: hold **USDC** instead of XLM for stability, and integrate a **SEP-24 anchor** for real
+PHP deposit/cash-out).
+
 ## Architecture
 
 - **Next.js App Router** renders every page (`src/app/**`).

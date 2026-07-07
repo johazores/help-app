@@ -1,0 +1,36 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ratesService } from "@/services/rates-service";
+import { convertFromXlm, formatFiat, formatMoney } from "@/lib/format";
+import type { Rates } from "@/services/types";
+
+/** Wallet summary: available balance in plain units + live peso value. */
+export function BalanceCard({ balance }: { balance: string }) {
+  const [rates, setRates] = useState<Rates | null>(null);
+
+  useEffect(() => {
+    ratesService.get().then(setRates).catch(() => {});
+  }, []);
+
+  const php = rates?.rates.PHP;
+
+  return (
+    <div className="card bg-ink p-6 text-paper">
+      <p className="text-[15px] text-paper/70">Your available funds</p>
+      <p className="mt-1 font-display text-[40px] font-bold leading-none">{formatMoney(balance)}</p>
+      {php !== undefined ? (
+        <p className="mt-2 text-[15px] text-marigold-soft">
+          about {formatFiat(convertFromXlm(balance, php), "PHP")} today
+        </p>
+      ) : null}
+      <Link
+        href="/home/deposit"
+        className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-marigold px-5 text-[15px] font-semibold text-ink hover:bg-marigold-deep hover:text-paper"
+      >
+        Add funds
+      </Link>
+    </div>
+  );
+}

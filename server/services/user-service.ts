@@ -4,6 +4,16 @@ import { hashPin, verifyPin } from "@/lib/crypto";
 import { issueToken } from "@/lib/jwt";
 import { stellarService } from "@/server/services/stellar-service";
 
+function isRootPhone(phone: string): boolean {
+  const root = process.env.ROOT_PHONE;
+  if (!root) return false;
+  try {
+    return normalizePhone(root) === phone;
+  } catch {
+    return false;
+  }
+}
+
 function normalizePhone(input: string): string {
   const trimmed = input.replace(/[\s-]/g, "");
   if (!/^(\+?63|0)?9\d{9}$/.test(trimmed)) {
@@ -32,6 +42,7 @@ class UserService {
         name,
         phone,
         pinHash: hashPin(input.pin),
+        role: isRootPhone(phone) ? "ROOT" : "USER",
         stellarAccount: { connect: { id: account.id } },
       },
     });
@@ -41,9 +52,13 @@ class UserService {
 
   async signIn(input: { phone: string; pin: string }) {
     const phone = normalizePhone(input.phone);
-    const user = await prisma.user.findUnique({ where: { phone } });
+    let user = await prisma.user.findUnique({ where: { phone } });
     if (!user || !verifyPin(input.pin, user.pinHash)) {
       throw new ApiError(401, "That mobile number or PIN doesn't match.");
+    }
+    // Allow promoting an existing account to admin by setting ROOT_PHONE.
+    if (isRootPhone(phone) && user.role !== "ROOT") {
+      user = await prisma.user.update({ where: { id: user.id }, data: { role: "ROOT" } });
     }
     return { token: issueToken(user), user: this.publicUser(user) };
   }
@@ -59,11 +74,11 @@ class UserService {
     if (user.stellarAccount) {
       balance = await stellarService.availableBalance(user.stellarAccount.publicKey);
     }
-    return { ...this.publicUser(user), balance };
+    return { ...this.publicUser(user), balance, role: user.role };
   }
 
-  private publicUser(user: { id: string; name: string; phone: string }) {
-    return { id: user.id, name: user.name, phone: user.phone };
+  private publicUser(user: { id: string; name: string; phone: string; role: "USER" | "ROOT" }) {
+    return { id: user.id, name: user.name, phone: user.phone, role: user.role };
   }
 }
 

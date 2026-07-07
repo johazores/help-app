@@ -207,6 +207,39 @@ class StellarService {
     return native ? native.balance : "0";
   }
 
+  /**
+   * Testnet-only top-up. Creates a fresh Friendbot-funded account and forwards
+   * `amount` XLM to the destination. This reliably works even when the
+   * destination already exists (Friendbot can't re-fund existing accounts).
+   * On mainnet this is replaced by a real on-ramp (see PRODUCTION.md).
+   */
+  async addTestFunds(destinationPublicKey: string, amount: string): Promise<{ txHash: string }> {
+    const svr = await server();
+    const { friendbotUrl, networkPassphrase } = await settingsService.stellar();
+
+    const source = Keypair.random();
+    const funded = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(source.publicKey())}`);
+    if (!funded.ok) {
+      throw new ApiError(502, "Couldn't add test funds right now. Please try again.");
+    }
+
+    const sourceAccount = await svr.loadAccount(source.publicKey());
+    const tx = new TransactionBuilder(sourceAccount, { fee: BASE_FEE, networkPassphrase })
+      .addOperation(
+        Operation.payment({
+          destination: destinationPublicKey,
+          asset: Asset.native(),
+          amount,
+        }),
+      )
+      .setTimeout(60)
+      .build();
+
+    tx.sign(source);
+    const result = await this.submit(svr, tx);
+    return { txHash: result.hash };
+  }
+
   private async submit(svr: Horizon.Server, tx: Parameters<Horizon.Server["submitTransaction"]>[0]) {
     try {
       return await svr.submitTransaction(tx);

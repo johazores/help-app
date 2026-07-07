@@ -58,6 +58,16 @@ export default function AccountPage() {
           <p className="mt-1 text-[19px] font-semibold text-ink">{profile?.phone}</p>
         </div>
 
+        <Link href="/home/deposit" className="block">
+          <div className="card flex items-center justify-between p-6 hover:shadow-lift">
+            <div>
+              <p className="text-[17px] font-semibold text-ink">Add funds</p>
+              <p className="text-[15px] text-subtle">Top up or see your address</p>
+            </div>
+            <span className="text-[22px] text-subtle">→</span>
+          </div>
+        </Link>
+
         <Link href="/home/guide" className="block">
           <div className="card flex items-center justify-between p-6 hover:shadow-lift">
             <div>

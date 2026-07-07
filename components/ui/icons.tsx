@@ -49,6 +49,15 @@ export function AccountIcon({ className = base }: IconProps) {
   );
 }
 
+export function ShieldIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3l7 3v5c0 4.2-2.9 7-7 8.5C7.9 18 5 15.2 5 11V6Z" />
+      <path d="M9.5 11.5 11.5 13.5 15 9.5" />
+    </svg>
+  );
+}
+
 export function MenuIcon({ className = base }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">

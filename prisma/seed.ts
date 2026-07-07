@@ -8,6 +8,13 @@ const settings: Record<string, string> = {
   "stellar.horizonUrl": "https://horizon-testnet.stellar.org",
   "stellar.friendbotUrl": "https://friendbot.stellar.org",
   "stellar.networkPassphrase": "Test SDF Network ; September 2015",
+  "stellar.network": "testnet",
+  "stellar.explorerTxUrl": "https://stellar.expert/explorer/testnet/tx/",
+  "stellar.explorerAccountUrl": "https://stellar.expert/explorer/testnet/account/",
+  // Live market rates (CoinGecko simple price API — no key required).
+  "rates.url": "https://api.coingecko.com/api/v3/simple/price",
+  "rates.coinId": "stellar",
+  "rates.currencies": "php,usd,eur,sar,aed,sgd,hkd",
 };
 
 async function main() {
