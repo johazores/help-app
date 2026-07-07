@@ -6,8 +6,8 @@ class ClaimService {
     return apiClient.request<ClaimInfo>(`/claim/${code}`, { auth: false });
   }
 
-  async claim(code: string): Promise<{ amount: string; forName: string }> {
-    return apiClient.request<{ amount: string; forName: string }>(`/claim/${code}`, {
+  async claim(code: string): Promise<{ amount: string; forName: string; txHash: string }> {
+    return apiClient.request<{ amount: string; forName: string; txHash: string }>(`/claim/${code}`, {
       method: "POST",
       auth: false,
     });

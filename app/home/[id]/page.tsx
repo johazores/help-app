@@ -26,6 +26,7 @@ export default function SafetyNetDetailPage() {
   const [busy, setBusy] = useState<"checkin" | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [justCreated, setJustCreated] = useState(false);
   const [, setTick] = useState(0);
 
   const load = useCallback(async () => {
@@ -45,6 +46,9 @@ export default function SafetyNetDetailPage() {
     }
     load();
     configService.get().then(setConfig).catch(() => {});
+    if (typeof window !== "undefined") {
+      setJustCreated(new URLSearchParams(window.location.search).get("created") === "1");
+    }
   }, [load, router]);
 
   // Live-updating countdown.
@@ -129,6 +133,23 @@ export default function SafetyNetDetailPage() {
         </div>
         <Badge tone={tone}>{statusLabel(net.status, openNow)}</Badge>
       </div>
+
+      {justCreated ? (
+        <div className="mt-5 flex items-start gap-3 rounded-2xl border border-sage/40 bg-sage/10 p-5">
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage text-paper">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12.5 10 17 19 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div>
+            <p className="text-[17px] font-bold text-ink">Money set aside successfully</p>
+            <p className="mt-0.5 text-[15px] text-body">
+              {formatMoney(net.amount)} is safely set aside for {net.forName}. Your receipt is in the
+              history below. Share the link so they can receive it when the time comes.
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         {/* Left: the lifeline + primary action */}

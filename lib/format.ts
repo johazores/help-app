@@ -97,3 +97,30 @@ export function formatFiat(amount: number, code: string): string {
   });
   return `${meta.symbol}${value}`;
 }
+
+// ---- Transactions -----------------------------------------------------------
+
+// Stellar base network fee: 100 stroops = 0.00001 XLM per operation.
+export const NETWORK_FEE_XLM = 0.00001;
+
+/** A stable, human-friendly reference id derived from the transaction. */
+export function referenceId(seed: string | null | undefined, fallback: string): string {
+  const base = (seed && seed.length >= 8 ? seed : fallback).replace(/[^a-zA-Z0-9]/g, "");
+  const chunk = base.slice(0, 10).toUpperCase().padEnd(10, "0");
+  return `SGP-${chunk.slice(0, 5)}-${chunk.slice(5, 10)}`;
+}
+
+export interface TxStatusMeta {
+  label: string;
+  tone: "active" | "open" | "received" | "closed" | "neutral";
+  meaning: string;
+}
+
+// How each recorded action maps to a plain-language status + meaning.
+export const TX_STATUS: Record<string, TxStatusMeta> = {
+  CREATED: { label: "Completed", tone: "received", meaning: "Money was set aside successfully." },
+  CHECKED_IN: { label: "Completed", tone: "received", meaning: "Your check-in was recorded." },
+  OPENED_TO_FAMILY: { label: "Open", tone: "open", meaning: "Now available for your family to receive." },
+  RECEIVED: { label: "Completed", tone: "received", meaning: "Your family received the money." },
+  CLOSED: { label: "Completed", tone: "received", meaning: "The money was returned to you." },
+};

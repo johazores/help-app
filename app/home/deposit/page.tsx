@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import QRCode from "qrcode";
 import { AppShell } from "@/components/app-shell";
-import { RatesBoard } from "@/components/rates-board";
+import { CurrencyConverter } from "@/components/currency-converter";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { ratesService } from "@/services/rates-service";
@@ -143,7 +143,11 @@ export default function DepositPage() {
       </div>
 
       <div className="mt-6">
-        <RatesBoard />
+        <CurrencyConverter
+          defaultFrom="XLM"
+          defaultTo="PHP"
+          defaultAmount={info ? String(Number(info.balance)) : "100"}
+        />
       </div>
     </AppShell>
   );

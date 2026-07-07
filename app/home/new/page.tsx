@@ -11,7 +11,26 @@ import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { recipientService } from "@/services/recipient-service";
 import { safetyNetService } from "@/services/safety-net-service";
+import { ratesService } from "@/services/rates-service";
+import {
+  convertFromXlm,
+  formatFiat,
+  formatMoney,
+  NETWORK_FEE_XLM,
+} from "@/lib/format";
 import type { Recipient } from "@/services/types";
+
+const MIN_AMOUNT = 1;
+
+function intervalLabel(minutes: number): string {
+  const found = [
+    { minutes: 3, label: "every few minutes" },
+    { minutes: 10080, label: "every week" },
+    { minutes: 43200, label: "every month" },
+    { minutes: 129600, label: "every 3 months" },
+  ].find((i) => i.minutes === minutes);
+  return found?.label ?? "on schedule";
+}
 
 const intervals = [
   { minutes: 3, label: "Every few minutes", note: "For trying it out" },
@@ -37,6 +56,9 @@ export default function NewSafetyNetPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [balance, setBalance] = useState<string>("0");
+  const [phpRate, setPhpRate] = useState<number | null>(null);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
@@ -52,6 +74,8 @@ export default function NewSafetyNetPage() {
       })
       .catch(() => authService.signOut())
       .finally(() => setReady(true));
+    authService.me().then((p) => setBalance(p.balance)).catch(() => {});
+    ratesService.get().then((r) => setPhpRate(r.rates.PHP ?? null)).catch(() => {});
   }, [router]);
 
   async function saveRecipient() {
@@ -78,7 +102,7 @@ export default function NewSafetyNetPage() {
     }
   }
 
-  async function submit() {
+  function review() {
     setError(null);
     if (!recipientId) {
       setError("Please choose who this is for.");
@@ -88,10 +112,20 @@ export default function NewSafetyNetPage() {
       setError("Please give this a short name, like “Monthly support”.");
       return;
     }
-    if (!(Number(amount) > 0)) {
-      setError("Please enter how much you want to set aside.");
+    const value = Number(amount);
+    if (!(value >= MIN_AMOUNT)) {
+      setError(`Please enter an amount of at least ${MIN_AMOUNT}.`);
       return;
     }
+    if (value > Number(balance)) {
+      setError("You don't have enough funds for this. Please add funds first.");
+      return;
+    }
+    setReviewing(true);
+  }
+
+  async function confirm() {
+    setError(null);
     setSubmitting(true);
     try {
       const net = await safetyNetService.create({
@@ -100,7 +134,7 @@ export default function NewSafetyNetPage() {
         recipientId,
         checkInIntervalMinutes: intervalMinutes,
       });
-      router.push(`/home/${net.id}`);
+      router.push(`/home/${net.id}?created=1`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't set this up.");
       setSubmitting(false);
@@ -116,6 +150,12 @@ export default function NewSafetyNetPage() {
       </AppShell>
     );
   }
+
+  const amt = Number(amount) || 0;
+  const recipientName = recipients.find((r) => r.id === recipientId)?.name ?? "your loved one";
+  const balanceNum = Number(balance) || 0;
+  const balanceAfter = balanceNum - amt;
+  const peso = (v: number) => (phpRate !== null ? `≈ ${formatFiat(convertFromXlm(v, phpRate), "PHP")}` : "");
 
   return (
     <AppShell>
@@ -212,6 +252,9 @@ export default function NewSafetyNetPage() {
               />
             )}
           </Field>
+          {amt > 0 && phpRate !== null ? (
+            <p className="mt-2 hint">{peso(amt)} at today&rsquo;s rate</p>
+          ) : null}
         </section>
 
         {/* Check-in frequency */}
@@ -250,9 +293,70 @@ export default function NewSafetyNetPage() {
           </p>
         ) : null}
 
-        <Button fullWidth loading={submitting} onClick={submit} disabled={addingNew && recipients.length === 0}>
-          Set aside money
-        </Button>
+        {!reviewing ? (
+          <Button
+            fullWidth
+            onClick={review}
+            disabled={addingNew && recipients.length === 0}
+          >
+            Review
+          </Button>
+        ) : (
+          <div className="card border-2 border-ink p-6">
+            <h2 className="font-display text-[22px] font-bold text-ink">Please review</h2>
+            <p className="mt-1 text-[15px] text-body">Check the details before you confirm.</p>
+
+            <dl className="mt-5 space-y-3 text-[16px]">
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-subtle">Amount to set aside</dt>
+                <dd className="text-right font-semibold text-ink">
+                  {formatMoney(amt)}
+                  {phpRate !== null ? <span className="block text-[13px] font-normal text-subtle">{peso(amt)}</span> : null}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-subtle">For</dt>
+                <dd className="font-semibold text-ink">{recipientName}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-subtle">Opens to family</dt>
+                <dd className="font-semibold text-ink">if you don&rsquo;t check in {intervalLabel(intervalMinutes)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-subtle">Network fee</dt>
+                <dd className="font-semibold text-ink">less than {formatMoney(NETWORK_FEE_XLM)} (free)</dd>
+              </div>
+
+              <div className="my-2 border-t border-line" />
+
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-subtle">Your funds now</dt>
+                <dd className="text-ink">{formatMoney(balanceNum)}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-subtle">After setting aside</dt>
+                <dd className="font-semibold text-ink">{formatMoney(balanceAfter)}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row-reverse">
+              <Button fullWidth loading={submitting} onClick={confirm}>
+                Confirm &amp; set aside
+              </Button>
+              <Button
+                fullWidth
+                variant="ghost"
+                onClick={() => setReviewing(false)}
+                disabled={submitting}
+              >
+                Go back
+              </Button>
+            </div>
+            <p className="mt-3 text-center text-[13px] text-subtle">
+              You can take this money back at any time while it&rsquo;s still yours.
+            </p>
+          </div>
+        )}
       </div>
     </AppShell>
   );

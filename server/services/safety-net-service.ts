@@ -272,7 +272,7 @@ class SafetyNetService {
       },
     });
 
-    return { amount: net.amount, forName: net.recipient.name };
+    return { amount: net.amount, forName: net.recipient.name, txHash };
   }
 }
 

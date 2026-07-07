@@ -6,7 +6,7 @@ import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { claimService } from "@/services/claim-service";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, referenceId } from "@/lib/format";
 import type { ClaimInfo } from "@/services/types";
 
 type Screen = "loading" | "not-open" | "ready" | "received" | "gone" | "error";
@@ -18,6 +18,7 @@ export default function ClaimPage() {
   const [screen, setScreen] = useState<Screen>("loading");
   const [info, setInfo] = useState<ClaimInfo | null>(null);
   const [receivedAmount, setReceivedAmount] = useState<string>("");
+  const [receivedRef, setReceivedRef] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
 
@@ -58,6 +59,7 @@ export default function ClaimPage() {
     try {
       const result = await claimService.claim(code);
       setReceivedAmount(result.amount);
+      setReceivedRef(referenceId(result.txHash, code));
       setScreen("received");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't receive the money.");
@@ -130,6 +132,11 @@ export default function ClaimPage() {
               <p className="mt-2 text-[17px] text-body">
                 {formatMoney(receivedAmount || info.amount)} from {info.fromName} is now yours.
               </p>
+              {receivedRef ? (
+                <p className="mt-4 rounded-xl bg-paper px-4 py-3 text-[14px] text-subtle">
+                  Reference <span className="font-mono font-semibold text-ink">{receivedRef}</span>
+                </p>
+              ) : null}
             </div>
           ) : null}
 
