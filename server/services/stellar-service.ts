@@ -101,6 +101,32 @@ class StellarService {
     return { id: account.id, publicKey: account.publicKey };
   }
 
+  /** A direct payment from one custodial account to a destination address. */
+  async pay(params: {
+    fromAccountId: string;
+    fromPublicKey: string;
+    toPublicKey: string;
+    amount: string;
+  }): Promise<{ txHash: string }> {
+    const svr = await server();
+    const { networkPassphrase } = await settingsService.stellar();
+    const key = await this.keypairFor(params.fromAccountId);
+    const source = await svr.loadAccount(params.fromPublicKey);
+    const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
+      .addOperation(
+        Operation.payment({
+          destination: params.toPublicKey,
+          asset: Asset.native(),
+          amount: params.amount,
+        }),
+      )
+      .setTimeout(60)
+      .build();
+    tx.sign(key);
+    const result = await this.submit(svr, tx);
+    return { txHash: result.hash };
+  }
+
   /** Decrypts and returns a secret key (guarded upstream by PIN verification). */
   async revealSecret(stellarAccountId: string): Promise<string> {
     const keypair = await this.keypairFor(stellarAccountId);

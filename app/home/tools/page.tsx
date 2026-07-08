@@ -9,6 +9,7 @@ const tools = [
   { href: "/home/tools/split", emoji: "👨‍👩‍👧", title: "Split a safety net", body: "One amount, several loved ones — each gets their own share if you can't check in." },
   { href: "/home/tools/pots", emoji: "🏺", title: "Savings goals", body: "Save toward something — a roof repair, a celebration — and watch it fill up." },
   { href: "/home/new?preset=abuloy", emoji: "🕯️", title: "Abuloy fund", body: "A safety net set up with care for life's hardest day, so your family is never left short." },
+  { href: "/home/paluwagan", emoji: "🔄", title: "Paluwagan", body: "A savings circle with people you trust — everyone chips in, and each round one member receives the pot." },
 ];
 
 export default function ToolsPage() {
@@ -28,17 +29,6 @@ export default function ToolsPage() {
           </Link>
         ))}
 
-        <div className="card p-6 opacity-70">
-          <div className="flex items-start justify-between">
-            <span className="text-[28px]" aria-hidden="true">🔄</span>
-            <span className="rounded-full bg-marigold/20 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-marigold-deep">Coming soon</span>
-          </div>
-          <h2 className="mt-3 text-[19px] font-bold text-ink">Paluwagan</h2>
-          <p className="mt-1 text-[15px] leading-relaxed text-body">
-            A rotating family fund where everyone chips in and takes turns receiving. This needs the
-            whole group on Sagip, so we're building it carefully.
-          </p>
-        </div>
       </div>
     </AppShell>
   );

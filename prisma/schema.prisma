@@ -211,3 +211,70 @@ model Pot {
 
   @@index([userId])
 }
+
+/// Paluwagan (savings circle). Trimmed from PALUWAGAN.md for the MVP core:
+/// contributions are paid member -> cycle recipient DIRECTLY (no pooled wallet),
+/// so "payout" completes automatically when every contribution is in.
+model PaluwaganGroup {
+  id                 String    @id @default(cuid())
+  name               String
+  ownerId            String
+  contributionAmount String
+  frequencyMinutes   Int // 1 (testing) | 10080 weekly | 43200 monthly
+  status             String    @default("DRAFT") // DRAFT | ACTIVE | COMPLETED | CANCELLED
+  inviteCode         String    @unique
+  currentCycle       Int       @default(0)
+  startedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  members PaluwaganMember[]
+  cycles  PaluwaganCycle[]
+
+  @@index([ownerId])
+}
+
+model PaluwaganMember {
+  id             String   @id @default(cuid())
+  group          PaluwaganGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId        String
+  userId         String
+  name           String
+  role           String   @default("MEMBER") // OWNER | MEMBER
+  payoutPosition Int
+  walletId       String // wallet used for paying & receiving
+  joinedAt       DateTime @default(now())
+
+  contributions PaluwaganContribution[]
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model PaluwaganCycle {
+  id             String   @id @default(cuid())
+  group          PaluwaganGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId        String
+  cycleNumber    Int
+  dueAt          DateTime
+  payoutMemberId String
+  status         String   @default("UPCOMING") // UPCOMING | COLLECTING | PAID_OUT
+
+  contributions PaluwaganContribution[]
+
+  @@unique([groupId, cycleNumber])
+}
+
+model PaluwaganContribution {
+  id       String   @id @default(cuid())
+  cycle    PaluwaganCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  cycleId  String
+  member   PaluwaganMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId String
+  amount   String
+  status   String   @default("DUE") // DUE | PAID
+  paidAt   DateTime?
+  txHash   String?
+
+  @@unique([cycleId, memberId])
+}
