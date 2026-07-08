@@ -26,6 +26,20 @@ export default function ClaimPage() {
   const [receivedRef, setReceivedRef] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [requested, setRequested] = useState(false);
+
+  async function requestEarly() {
+    setRequesting(true);
+    try {
+      await claimService.requestEarly(code);
+      setRequested(true);
+    } catch {
+      // Quietly ignore; the reassurance copy still applies.
+    } finally {
+      setRequesting(false);
+    }
+  }
 
   useEffect(() => {
     claimService
@@ -126,6 +140,25 @@ export default function ClaimPage() {
                   </p>
                 </div>
               </div>
+              {info.kind !== "GIFT" ? (
+                <div className="card mt-4 overflow-hidden p-5 text-center">
+                  {requested || info.requestState === "REQUESTED" ? (
+                    <p className="text-[15px] leading-relaxed text-body">
+                      <span className="font-semibold text-ink">We&rsquo;ve let {info.fromName} know.</span>{" "}
+                      If they open it for you, this page will show a Receive button.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-[15px] leading-relaxed text-body">
+                        Is this an emergency? You can ask {info.fromName} to open it for you now.
+                      </p>
+                      <Button size="md" variant="ghost" className="mt-3" loading={requesting} onClick={requestEarly}>
+                        Ask to open it now
+                      </Button>
+                    </>
+                  )}
+                </div>
+              ) : null}
               <p className="mt-4 text-center text-[14px] text-subtle">
                 Keep this link safe. You can open it anytime to check.
               </p>

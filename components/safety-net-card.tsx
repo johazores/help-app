@@ -45,7 +45,13 @@ export function SafetyNetCard({ net }: { net: SafetyNet }) {
             />
           </div>
           <p className="mt-2 text-[14px] text-subtle">
-            {open ? "Open for your family now" : `Opens to family in ${text} if you don't check in`}
+            {net.kind === "GIFT"
+              ? open
+                ? "Ready for them now"
+                : `Gift — opens in ${text}`
+              : open
+              ? "Open for your family now"
+              : `Opens to family in ${text} if you don't check in`}
           </p>
         </div>
       ) : (

@@ -94,6 +94,8 @@ export interface Recipient {
 
 export interface SafetyNet {
   id: string;
+  kind: string;
+  requestState: string;
   label: string;
   amount: string;
   forName: string;
@@ -120,6 +122,8 @@ export interface SafetyNetDetail extends SafetyNet {
 }
 
 export interface ClaimInfo {
+  kind: string;
+  requestState: string;
   label: string;
   amount: string;
   fromName: string;
@@ -141,4 +145,11 @@ export interface DepositInfo {
   address: string;
   balance: string;
   walletName: string;
+}
+
+export interface Pot {
+  id: string;
+  name: string;
+  target: string;
+  saved: string;
 }

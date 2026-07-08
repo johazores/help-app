@@ -144,6 +144,8 @@ enum SafetyNetStatus {
 /// The core object: money set aside, guarded by a check-in.
 model SafetyNet {
   id                 String          @id @default(cuid())
+  kind               String          @default("SAFETY_NET") // SAFETY_NET | GIFT
+  requestState       String          @default("NONE") // NONE | REQUESTED (family asked to open early)
   label              String
   amount             String // stored as string to preserve exact Stellar precision
   asset              String          @default("XLM")
@@ -194,4 +196,18 @@ model Activity {
 model Setting {
   key   String @id
   value String
+}
+
+/// A savings goal ("Roof repair"). An earmark of funds the person is setting
+/// aside toward a target — tracked here, spendable from the wallet as usual.
+model Pot {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  target    String // amount as string
+  saved     String   @default("0")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }

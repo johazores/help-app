@@ -13,6 +13,7 @@ import {
   PeopleIcon,
   PlusIcon,
   ShieldIcon,
+  SparkIcon,
   WalletIcon,
 } from "@/components/ui/icons";
 import { authService } from "@/services/auth-service";
@@ -21,6 +22,7 @@ import { adminAuthService } from "@/services/admin-auth-service";
 const baseNav = [
   { href: "/home", label: "Home", Icon: HomeIcon },
   { href: "/home/people", label: "Loved ones", Icon: PeopleIcon },
+  { href: "/home/tools", label: "Family tools", Icon: SparkIcon },
   { href: "/home/wallets", label: "Wallets", Icon: WalletIcon },
   { href: "/home/guide", label: "How it works", Icon: GuideIcon },
   { href: "/home/account", label: "Account", Icon: AccountIcon },

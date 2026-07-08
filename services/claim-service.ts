@@ -12,6 +12,10 @@ class ClaimService {
       auth: false,
     });
   }
+
+  async requestEarly(code: string): Promise<void> {
+    await apiClient.request(`/claim/${code}/request`, { method: "POST", auth: false });
+  }
 }
 
 export const claimService = new ClaimService();

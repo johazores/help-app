@@ -117,6 +117,8 @@ export default function SafetyNetDetailPage() {
   const { text: remaining } = countdown(net.unlockAt);
   const active = net.status === "ACTIVE";
   const openNow = active && Date.parse(net.unlockAt) <= Date.now();
+  const isGift = net.kind === "GIFT";
+  const streak = net.activity.filter((a) => a.type === "CHECKED_IN").length;
   const tone =
     net.status === "RECEIVED" ? "received" : net.status === "CLOSED" ? "closed" : openNow ? "open" : "active";
 
@@ -133,6 +135,27 @@ export default function SafetyNetDetailPage() {
         </div>
         <Badge tone={tone}>{statusLabel(net.status, openNow)}</Badge>
       </div>
+
+      {net.requestState === "REQUESTED" && active && !openNow ? (
+        <div className="mt-5 rounded-2xl border-2 border-marigold bg-marigold/10 p-5">
+          <p className="text-[17px] font-bold text-ink">{net.forName} is asking to receive this now</p>
+          <p className="mt-1 text-[15px] text-body">
+            If it&rsquo;s an emergency, you can open it for them right away. Otherwise, dismiss this and
+            everything stays as it is.
+          </p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <Button size="md" loading={busy === "checkin"} onClick={async () => {
+              setBusy("checkin");
+              try { await safetyNetService.approveEarly(net.id); await load(); } finally { setBusy(null); }
+            }}>
+              Open it for {net.forName} now
+            </Button>
+            <Button size="md" variant="ghost" onClick={async () => { await safetyNetService.dismissEarly(net.id); await load(); }}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {justCreated ? (
         <div className="mt-5 flex items-start gap-3 rounded-2xl border border-sage/40 bg-sage/10 p-5">
@@ -165,14 +188,14 @@ export default function SafetyNetDetailPage() {
                 progress={progress}
                 open={openNow}
                 centerLabel={openNow ? "Open" : remaining}
-                centerSub={openNow ? "for your family" : "until it opens to family"}
+                centerSub={openNow ? (isGift ? "ready for them" : "for your family") : (isGift ? "until the gift opens" : "until it opens to family")}
               />
             ) : (
               <LifelineRing progress={1} open centerLabel={net.status === "RECEIVED" ? "Received" : "Closed"} />
             )}
           </div>
 
-          {active && !openNow ? (
+          {active && !openNow && !isGift ? (
             <div className="mt-8 w-full">
               <Button fullWidth loading={busy === "checkin"} onClick={checkIn}>
                 I&rsquo;m okay — check in
@@ -180,7 +203,17 @@ export default function SafetyNetDetailPage() {
               <p className="mt-3 text-[14px] text-subtle">
                 This keeps the money yours and resets the timer.
               </p>
+              {streak >= 2 ? (
+                <p className="mt-2 text-[14px] font-semibold text-sage">
+                  {streak} check-ins in a row — your family is well looked after.
+                </p>
+              ) : null}
             </div>
+          ) : null}
+          {active && !openNow && isGift ? (
+            <p className="mt-8 text-[15px] text-body">
+              This gift opens on its own — nothing for you to do.
+            </p>
           ) : null}
 
           {active && openNow ? (
@@ -207,6 +240,9 @@ export default function SafetyNetDetailPage() {
                   {copied ? "Copied" : "Copy link"}
                 </Button>
               </div>
+              <Link href={`/home/${net.id}/card`} className="mt-3 inline-block text-[14px] font-semibold text-ink underline">
+                Print a card with this link
+              </Link>
             </div>
           ) : null}
 

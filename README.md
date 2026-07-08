@@ -95,6 +95,13 @@ touch the database.
   confirmation dialog), rename, add or import more, and reveal a recovery key behind a PIN
   check. Safety nets stay pinned to the wallet that created them, so check-ins keep working
   after switching.
+- **Family tools hub.** Advanced features live at `/home/tools`, fully separate from the core
+  flow: send-now gifts, scheduled gifts ("opens on a date"), tuition plans that open in parts,
+  split safety nets across several loved ones, savings goals with progress bars, an abuloy
+  preset, a printable QR claim card for each net/gift, an emergency "ask to open it now"
+  request the sender approves or dismisses, and check-in streaks. Paluwagan is shown as an
+  honest coming-soon (it needs multi-user coordination). All of it reuses the same
+  claimable-balance machinery — gifts are nets with an open date and no check-in.
 - **Account management.** Users get a full account area: profile + photo, add/change email
   with 6-digit verification codes, change PIN (signs out other devices), forgot-PIN recovery
   via verified email, and multi-device session management with revocation. Email delivery
