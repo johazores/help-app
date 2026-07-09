@@ -103,6 +103,10 @@ class SafetyNetService {
     if (kind === "GIFT") {
       unlockAt = input.opensAt ? new Date(input.opensAt) : new Date();
       if (Number.isNaN(unlockAt.getTime())) throw new ApiError(400, "Please choose a valid date.");
+      // A five-minute grace covers clock skew for "send now"; anything earlier is a past date.
+      if (unlockAt.getTime() < Date.now() - 5 * 60_000) {
+        throw new ApiError(400, "That date has already passed. Please choose today or a future date.");
+      }
       if (unlockAt.getTime() > Date.now() + 366 * 24 * 60 * 60_000) {
         throw new ApiError(400, "Please choose a date within the next year.");
       }

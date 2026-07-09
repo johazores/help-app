@@ -105,9 +105,13 @@ function GiftForm() {
   return (
     <>
       <Link href="/home/tools" className="text-[15px] font-semibold text-subtle hover:text-ink">← Family tools</Link>
-      <h1 className="mt-3 font-display text-[30px] font-bold text-ink sm:text-[36px]">Send a gift</h1>
+      <h1 className="mt-3 font-display text-[30px] font-bold text-ink sm:text-[36px]">
+        {mode === "parts" ? "Tuition plan" : "Send a gift"}
+      </h1>
       <p className="mt-2 max-w-xl text-[16px] text-body">
-        No check-ins here — a gift is theirs the moment it opens. They receive it with the same easy link.
+        {mode === "parts"
+          ? "Set aside school money that opens term by term, on the dates you choose. No check-ins — each part is theirs the moment its date arrives."
+          : "No check-ins here — a gift is theirs the moment it opens. They receive it with the same easy link."}
       </p>
 
       <div className="mt-6 flex max-w-xl gap-2">

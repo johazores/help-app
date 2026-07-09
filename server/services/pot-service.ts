@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
+import { stellarService } from "@/server/services/stellar-service";
+import { walletService } from "@/server/services/wallet-service";
 
 /** Savings goals — earmarks of wallet funds toward a target. */
 class PotService {
@@ -31,6 +33,21 @@ class PotService {
     if (!Number.isFinite(add) || add <= 0) throw new ApiError(400, "Please enter an amount.");
     const pot = await prisma.pot.findFirst({ where: { id: potId, userId } });
     if (!pot) throw new ApiError(404, "That goal wasn't found.");
+
+    // Goals are earmarks of real wallet money, so the total across every goal
+    // can never exceed what's actually in the active wallet.
+    const wallet = await walletService.requireActive(userId);
+    const balance = Number(await stellarService.availableBalance(wallet.stellarAccount.publicKey));
+    const pots = await prisma.pot.findMany({ where: { userId } });
+    const earmarked = pots.reduce((sum: number, x: { saved: string }) => sum + Number(x.saved), 0);
+    if (earmarked + add > balance) {
+      const free = Math.max(0, balance - earmarked);
+      throw new ApiError(
+        400,
+        `That's more than you have. Your wallet has ${balance.toFixed(2)}, and ${earmarked.toFixed(2)} is already set toward goals — you can add up to ${free.toFixed(2)}.`,
+      );
+    }
+
     const saved = (Number(pot.saved) + add).toFixed(2);
     await prisma.pot.update({ where: { id: potId }, data: { saved } });
     return { saved };

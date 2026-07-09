@@ -23,13 +23,19 @@ export default function PotsPage() {
   const [addAmounts, setAddAmounts] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [balance, setBalance] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
-    potService.list().then(setPots).finally(() => setReady(true));
+    Promise.all([potService.list(), authService.me()])
+      .then(([list, me]) => {
+        setPots(list);
+        setBalance(me.balance);
+      })
+      .finally(() => setReady(true));
   }, [router]);
 
   async function create() {
@@ -51,6 +57,7 @@ export default function PotsPage() {
     const amount = addAmounts[pot.id];
     if (!(Number(amount) > 0)) return;
     setBusyId(pot.id);
+    setError(null);
     try {
       const res = await potService.addTo(pot.id, amount);
       setPots((prev) => prev.map((p) => (p.id === pot.id ? { ...p, saved: res.saved } : p)));
@@ -84,6 +91,18 @@ export default function PotsPage() {
         Mark money in your wallet for something that matters. When a goal is full, turn it into a
         gift or a safety net with one tap.
       </p>
+
+      {balance !== null ? (
+        <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-[14px] font-semibold text-paper">
+          In your wallet: {formatMoney(balance)}
+        </p>
+      ) : null}
+
+      {error ? (
+        <p role="alert" className="mt-4 max-w-xl rounded-xl bg-danger/10 px-4 py-3 text-[15px] font-medium text-danger">
+          {error}
+        </p>
+      ) : null}
 
       <div className="mt-6 max-w-xl space-y-4">
         {pots.map((pot) => {
