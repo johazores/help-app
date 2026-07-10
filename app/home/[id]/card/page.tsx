@@ -2,21 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import QRCode from "qrcode";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { formatMoney } from "@/lib/format";
-import type { SafetyNetDetail } from "@/services/types";
+import type { SafetyNetCardSummary } from "@/services/types";
+
+async function generateClaimQr(claimCode: string): Promise<string> {
+  const QRCode = (await import("qrcode")).default;
+  const url = `${window.location.origin}/claim/${claimCode}`;
+  return QRCode.toDataURL(url, {
+    margin: 1,
+    width: 240,
+    color: { dark: "#0C3B3A", light: "#FFFFFF" },
+  });
+}
 
 /** A printable card the family can keep — the claim link as a scannable code. */
 export default function ClaimCardPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
-  const [net, setNet] = useState<SafetyNetDetail | null>(null);
+  const [net, setNet] = useState<SafetyNetCardSummary | null>(null);
   const [qr, setQr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,16 +34,15 @@ export default function ClaimCardPage() {
       return;
     }
     safetyNetService
-      .detail(id)
-      .then(async (n) => {
+      .cardSummary(id)
+      .then((n) => {
         setNet(n);
-        const url = `${window.location.origin}/claim/${n.claimCode}`;
-        setQr(await QRCode.toDataURL(url, { margin: 1, width: 240, color: { dark: "#0C3B3A", light: "#FFFFFF" } }));
+        return generateClaimQr(n.claimCode).then(setQr);
       })
       .catch(() => router.replace("/home"));
   }, [id, router]);
 
-  if (!net || !qr) {
+  if (!net) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-paper text-ink">
         <Spinner className="h-7 w-7" />
@@ -60,8 +68,12 @@ export default function ClaimCardPage() {
           <p className="mt-5 text-[15px] text-subtle">Money is set aside for</p>
           <p className="mt-1 break-words font-display text-[26px] font-bold leading-tight text-ink">{net.forName}</p>
           <p className="mt-3 break-words font-display text-[36px] font-bold text-ink">{formatMoney(net.amount)}</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={qr} alt="Scan to open your link" className="mx-auto mt-5 rounded-xl border border-line" />
+          {qr ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={qr} alt="Scan to open your link" className="mx-auto mt-5 rounded-xl border border-line" />
+          ) : (
+            <div className="mx-auto mt-5 h-[240px] w-[240px] animate-pulse rounded-xl bg-line/60" />
+          )}
           <div className="mt-5 text-left text-[14px] leading-relaxed text-body">
             <p className="font-semibold text-ink">How to use this card:</p>
             <p className="mt-1">1. Open your phone&rsquo;s camera and point it at the square code.</p>

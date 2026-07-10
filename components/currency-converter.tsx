@@ -56,11 +56,22 @@ export function CurrencyConverter({
         .get()
         .then((r) => alive && setRates(r))
         .catch(() => alive && setError(true));
+
     load();
-    const t = setInterval(load, 60_000);
+
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 60_000);
+
+    function onVisible() {
+      if (document.visibilityState === "visible") load();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       alive = false;
       clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

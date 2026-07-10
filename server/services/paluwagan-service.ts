@@ -37,17 +37,30 @@ class PaluwaganService {
   async listMine(userId: string) {
     const memberships = await prisma.paluwaganMember.findMany({
       where: { userId },
-      include: { group: { include: { members: true } } },
+      include: {
+        group: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            contributionAmount: true,
+            frequencyMinutes: true,
+            currentCycle: true,
+            inviteCode: true,
+            _count: { select: { members: true } },
+          },
+        },
+      },
       orderBy: { joinedAt: "desc" },
     });
-    return memberships.map((m: MemberRow & { group: { id: string; name: string; status: string; contributionAmount: string; frequencyMinutes: number; currentCycle: number; inviteCode: string; members: unknown[] } }) => ({
+    return memberships.map((m) => ({
       id: m.group.id,
       name: m.group.name,
       status: m.group.status,
       amount: m.group.contributionAmount,
       frequencyMinutes: m.group.frequencyMinutes,
       currentCycle: m.group.currentCycle,
-      memberCount: m.group.members.length,
+      memberCount: m.group._count.members,
       inviteCode: m.group.inviteCode,
       myRole: m.role,
     }));

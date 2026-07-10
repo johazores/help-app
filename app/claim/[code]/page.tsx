@@ -62,7 +62,9 @@ export default function ClaimPage() {
   // While waiting, quietly re-check so the screen opens on its own.
   useEffect(() => {
     if (screen !== "not-open") return;
-    const t = setInterval(() => {
+
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
       claimService
         .lookup(code)
         .then((data) => {
@@ -70,8 +72,14 @@ export default function ClaimPage() {
           if (data.isOpen) setScreen("ready");
         })
         .catch(() => {});
-    }, 8000);
-    return () => clearInterval(t);
+    };
+
+    const t = setInterval(poll, 12_000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", poll);
+    };
   }, [screen, code]);
 
   async function receive() {

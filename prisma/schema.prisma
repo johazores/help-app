@@ -170,6 +170,9 @@ model SafetyNet {
   recipientId String
 
   activity Activity[]
+
+  @@index([ownerId])
+  @@index([ownerId, createdAt])
 }
 
 enum ActivityType {
@@ -190,6 +193,8 @@ model Activity {
 
   safetyNet   SafetyNet @relation(fields: [safetyNetId], references: [id], onDelete: Cascade)
   safetyNetId String
+
+  @@index([safetyNetId, createdAt])
 }
 
 /// Runtime configuration & third-party credentials — kept in the DB, not in code.

@@ -1,5 +1,5 @@
 import { apiClient } from "@/services/api-client";
-import type { SafetyNet, SafetyNetDetail } from "@/services/types";
+import type { SafetyNet, SafetyNetCardSummary, SafetyNetDetail } from "@/services/types";
 
 class SafetyNetService {
   async list(): Promise<SafetyNet[]> {
@@ -8,6 +8,10 @@ class SafetyNetService {
 
   async detail(id: string): Promise<SafetyNetDetail> {
     return apiClient.request<SafetyNetDetail>(`/safety-nets/${id}`);
+  }
+
+  async cardSummary(id: string): Promise<SafetyNetCardSummary> {
+    return apiClient.request<SafetyNetCardSummary>(`/safety-nets/${id}/card`);
   }
 
   async create(input: {

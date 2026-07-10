@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { LifelineRing } from "@/components/lifeline-ring";
+import { SafetyNetLifeline } from "@/components/safety-net-lifeline";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { configService } from "@/services/config-service";
-import { countdown, formatMoney, statusLabel, windowProgress } from "@/lib/format";
+import { formatMoney, statusLabel } from "@/lib/format";
 import type { AppConfig, SafetyNetDetail } from "@/services/types";
 
 export default function SafetyNetDetailPage() {
@@ -27,7 +27,6 @@ export default function SafetyNetDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [justCreated, setJustCreated] = useState(false);
-  const [, setTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -50,12 +49,6 @@ export default function SafetyNetDetailPage() {
       setJustCreated(new URLSearchParams(window.location.search).get("created") === "1");
     }
   }, [load, router]);
-
-  // Live-updating countdown.
-  useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
 
   async function checkIn() {
     setBusy("checkin");
@@ -113,11 +106,8 @@ export default function SafetyNetDetailPage() {
     );
   }
 
-  const progress = windowProgress(net.lastCheckInAt, net.unlockAt);
-  const { text: remaining } = countdown(net.unlockAt);
   const active = net.status === "ACTIVE";
   const openNow = active && Date.parse(net.unlockAt) <= Date.now();
-  const isGift = net.kind === "GIFT";
   const streak = net.activity.filter((a) => a.type === "CHECKED_IN").length;
   const tone =
     net.status === "RECEIVED" ? "received" : net.status === "CLOSED" ? "closed" : openNow ? "open" : "active";
@@ -175,53 +165,17 @@ export default function SafetyNetDetailPage() {
       ) : null}
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        {/* Left: the lifeline + primary action */}
-        <div className="card flex flex-col items-center p-8 text-center">
-          <p className="break-words font-display text-[clamp(34px,9vw,44px)] font-bold leading-none text-ink">
-            {formatMoney(net.amount)}
-          </p>
-          <p className="mt-2 text-[15px] text-subtle">set aside</p>
-
-          <div className="mt-7">
-            {active ? (
-              <LifelineRing
-                progress={progress}
-                open={openNow}
-                centerLabel={openNow ? "Open" : remaining}
-                centerSub={openNow ? (isGift ? "ready for them" : "for your family") : (isGift ? "until the gift opens" : "until it opens to family")}
-              />
-            ) : (
-              <LifelineRing progress={1} open centerLabel={net.status === "RECEIVED" ? "Received" : "Closed"} />
-            )}
-          </div>
-
-          {active && !openNow && !isGift ? (
-            <div className="mt-8 w-full">
-              <Button fullWidth loading={busy === "checkin"} onClick={checkIn}>
-                I&rsquo;m okay — check in
-              </Button>
-              <p className="mt-3 text-[14px] text-subtle">
-                This keeps the money yours and resets the timer.
-              </p>
-              {streak >= 2 ? (
-                <p className="mt-2 text-[14px] font-semibold text-sage">
-                  {streak} check-ins in a row — your family is well looked after.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-          {active && !openNow && isGift ? (
-            <p className="mt-8 text-[15px] text-body">
-              This gift opens on its own — nothing for you to do.
-            </p>
-          ) : null}
-
-          {active && openNow ? (
-            <div className="mt-8 w-full rounded-xl bg-marigold/15 p-4 text-[15px] text-marigold-deep">
-              The check-in window has passed. Your family can now receive this money using the link below.
-            </div>
-          ) : null}
-        </div>
+        <SafetyNetLifeline
+          amount={net.amount}
+          status={net.status}
+          kind={net.kind}
+          unlockAt={net.unlockAt}
+          lastCheckInAt={net.lastCheckInAt}
+          forName={net.forName}
+          busy={busy === "checkin"}
+          streak={streak}
+          onCheckIn={checkIn}
+        />
 
         {/* Right: sharing + secondary actions + activity */}
         <div className="space-y-6">

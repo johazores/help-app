@@ -65,16 +65,16 @@ export default function NewSafetyNetPage() {
       router.replace("/sign-in");
       return;
     }
-    recipientService
-      .list()
-      .then((list) => {
+    Promise.all([recipientService.list(), authService.me(), ratesService.get()])
+      .then(([list, profile, rates]) => {
         setRecipients(list);
         setRecipientId(list[0]?.id ?? "");
         setAddingNew(list.length === 0);
+        setBalance(profile.balance);
+        setPhpRate(rates.rates.PHP ?? null);
       })
       .catch(() => authService.signOut())
       .finally(() => setReady(true));
-    authService.me().then((p) => setBalance(p.balance)).catch(() => {});
     if (typeof window !== "undefined") {
       const preset = new URLSearchParams(window.location.search).get("preset");
       if (preset === "abuloy") {
@@ -82,7 +82,6 @@ export default function NewSafetyNetPage() {
         setIntervalMinutes(43200);
       }
     }
-    ratesService.get().then((r) => setPhpRate(r.rates.PHP ?? null)).catch(() => {});
   }, [router]);
 
   async function saveRecipient() {

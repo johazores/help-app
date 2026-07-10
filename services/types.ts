@@ -121,6 +121,12 @@ export interface SafetyNetDetail extends SafetyNet {
   activity: Activity[];
 }
 
+export interface SafetyNetCardSummary {
+  forName: string;
+  amount: string;
+  claimCode: string;
+}
+
 export interface ClaimInfo {
   kind: string;
   requestState: string;

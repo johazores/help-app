@@ -6,16 +6,18 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { SafetyNetCard } from "@/components/safety-net-card";
 import { BalanceCard } from "@/components/balance-card";
+import { HomePageSkeleton } from "@/components/page-skeleton";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
-import type { Profile, SafetyNet } from "@/services/types";
+import { ratesService } from "@/services/rates-service";
+import type { Profile, Rates, SafetyNet } from "@/services/types";
 
 export default function HomePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [nets, setNets] = useState<SafetyNet[]>([]);
+  const [rates, setRates] = useState<Rates | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,14 +25,15 @@ export default function HomePage() {
       router.replace("/sign-in");
       return;
     }
-    Promise.all([authService.me(), safetyNetService.list()])
-      .then(([p, n]) => {
+    Promise.all([authService.me(), safetyNetService.list(), ratesService.get()])
+      .then(([p, n, r]) => {
         if (!p.hasWallet) {
           router.replace("/wallet-setup");
           return;
         }
         setProfile(p);
         setNets(n);
+        setRates(r);
       })
       .catch(() => {
         authService.signOut();
@@ -42,9 +45,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <AppShell>
-        <div className="flex justify-center py-20 text-ink">
-          <Spinner className="h-7 w-7" />
-        </div>
+        <HomePageSkeleton />
       </AppShell>
     );
   }
@@ -66,7 +67,7 @@ export default function HomePage() {
       </div>
 
       <div className="mt-6">
-        <BalanceCard balance={profile?.balance ?? "0"} />
+        <BalanceCard balance={profile?.balance ?? "0"} rates={rates} />
       </div>
 
       {nets.length === 0 ? (

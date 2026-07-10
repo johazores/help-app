@@ -7,12 +7,16 @@ import { convertFromXlm, formatFiat, formatMoney } from "@/lib/format";
 import type { Rates } from "@/services/types";
 
 /** Wallet summary: available balance in plain units + live peso value. */
-export function BalanceCard({ balance }: { balance: string }) {
-  const [rates, setRates] = useState<Rates | null>(null);
+export function BalanceCard({ balance, rates: ratesProp }: { balance: string; rates?: Rates | null }) {
+  const [rates, setRates] = useState<Rates | null>(ratesProp ?? null);
 
   useEffect(() => {
+    if (ratesProp) {
+      setRates(ratesProp);
+      return;
+    }
     ratesService.get().then(setRates).catch(() => {});
-  }, []);
+  }, [ratesProp]);
 
   const php = rates?.rates.PHP;
 

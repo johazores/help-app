@@ -72,6 +72,24 @@ class SafetyNetService {
     };
   }
 
+  /** Minimal fields for the printable claim card — skips activity history. */
+  async cardSummary(ownerId: string, id: string) {
+    const net = await prisma.safetyNet.findFirst({
+      where: { id, ownerId },
+      select: {
+        amount: true,
+        claimCode: true,
+        recipient: { select: { name: true } },
+      },
+    });
+    if (!net) throw new ApiError(404, "We couldn't find that safety net.");
+    return {
+      forName: net.recipient.name,
+      amount: net.amount,
+      claimCode: net.claimCode,
+    };
+  }
+
   async create(
     ownerId: string,
     input: {

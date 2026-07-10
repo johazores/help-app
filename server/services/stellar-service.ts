@@ -124,10 +124,9 @@ class StellarService {
       .build();
     tx.sign(key);
     const result = await this.submit(svr, tx);
+    this.invalidateBalance(params.fromPublicKey);
     return { txHash: result.hash };
   }
-
-  /** Decrypts and returns a secret key (guarded upstream by PIN verification). */
   async revealSecret(stellarAccountId: string): Promise<string> {
     const keypair = await this.keypairFor(stellarAccountId);
     return keypair.secret();
@@ -184,6 +183,7 @@ class StellarService {
 
     tx.sign(ownerKey);
     const result = await this.submit(svr, tx);
+    this.invalidateBalance(params.ownerPublicKey);
     return { balanceId: tx.getClaimableBalanceId(0), txHash: result.hash };
   }
 
@@ -224,6 +224,7 @@ class StellarService {
 
     tx.sign(ownerKey);
     const result = await this.submit(svr, tx);
+    this.invalidateBalance(params.ownerPublicKey);
     // The recreate is operation index 1.
     return { balanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
   }
@@ -271,15 +272,31 @@ class StellarService {
 
     tx.sign(key);
     const result = await this.submit(svr, tx);
+    this.invalidateBalance(params.publicKey);
     return { txHash: result.hash };
   }
 
-  /** Spendable XLM balance for display. */
+  private balanceCache = new Map<string, { balance: string; at: number }>();
+  private static BALANCE_CACHE_MS = 20_000;
+
+  /** Spendable XLM balance for display. Cached briefly to avoid repeated Horizon calls. */
   async availableBalance(publicKey: string): Promise<string> {
+    const hit = this.balanceCache.get(publicKey);
+    if (hit && Date.now() - hit.at < StellarService.BALANCE_CACHE_MS) {
+      return hit.balance;
+    }
+
     const svr = await server();
     const account = await svr.loadAccount(publicKey);
     const native = account.balances.find((b) => b.asset_type === "native");
-    return native ? native.balance : "0";
+    const balance = native ? native.balance : "0";
+    this.balanceCache.set(publicKey, { balance, at: Date.now() });
+    return balance;
+  }
+
+  /** Drop cached balance after a transaction that changes funds. */
+  invalidateBalance(publicKey: string): void {
+    this.balanceCache.delete(publicKey);
   }
 
   /**
@@ -312,6 +329,7 @@ class StellarService {
 
     tx.sign(source);
     const result = await this.submit(svr, tx);
+    this.invalidateBalance(destinationPublicKey);
     return { txHash: result.hash };
   }
 

@@ -3,16 +3,29 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import QRCode from "qrcode";
+import dynamic from "next/dynamic";
 import { AppShell } from "@/components/app-shell";
-import { CurrencyConverter } from "@/components/currency-converter";
+import { CardSkeleton } from "@/components/page-skeleton";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { ratesService } from "@/services/rates-service";
 import { walletService } from "@/services/wallet-service";
 import { authService } from "@/services/auth-service";
 import { convertFromXlm, formatFiat, formatMoney } from "@/lib/format";
 import type { DepositInfo, Rates } from "@/services/types";
+
+const CurrencyConverter = dynamic(
+  () => import("@/components/currency-converter").then((m) => m.CurrencyConverter),
+  { loading: () => <CardSkeleton lines={4} /> },
+);
+
+async function generateQr(address: string): Promise<string> {
+  const QRCode = (await import("qrcode")).default;
+  return QRCode.toDataURL(address, {
+    margin: 1,
+    width: 220,
+    color: { dark: "#0C3B3A", light: "#FFFFFF" },
+  });
+}
 
 export default function DepositPage() {
   const router = useRouter();
@@ -29,13 +42,14 @@ export default function DepositPage() {
       router.replace("/sign-in");
       return;
     }
-    walletService
-      .depositInfo()
-      .then((d) => {
+
+    Promise.all([walletService.depositInfo(), ratesService.get()])
+      .then(([d, r]) => {
         setInfo(d);
-        return QRCode.toDataURL(d.address, { margin: 1, width: 220, color: { dark: "#0C3B3A", light: "#FFFFFF" } });
+        setRates(r);
+        setLoading(false);
+        return generateQr(d.address).then(setQr);
       })
-      .then((url) => setQr(url))
       .catch((err) => {
         const msg = err instanceof Error ? err.message : "";
         if (msg.includes("wallet")) {
@@ -46,7 +60,6 @@ export default function DepositPage() {
         router.replace("/sign-in");
       })
       .finally(() => setLoading(false));
-    ratesService.get().then(setRates).catch(() => {});
   }, [router]);
 
   function copy() {
@@ -70,11 +83,13 @@ export default function DepositPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !info) {
     return (
       <AppShell>
-        <div className="flex justify-center py-20 text-ink">
-          <Spinner className="h-7 w-7" />
+        <CardSkeleton lines={2} />
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_1fr]">
+          <CardSkeleton lines={5} />
+          <CardSkeleton lines={5} />
         </div>
       </AppShell>
     );

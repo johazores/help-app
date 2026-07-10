@@ -38,8 +38,8 @@ class PotService {
     // can never exceed what's actually in the active wallet.
     const wallet = await walletService.requireActive(userId);
     const balance = Number(await stellarService.availableBalance(wallet.stellarAccount.publicKey));
-    const pots = await prisma.pot.findMany({ where: { userId } });
-    const earmarked = pots.reduce((sum: number, x: { saved: string }) => sum + Number(x.saved), 0);
+    const rows = await prisma.pot.findMany({ where: { userId }, select: { saved: true } });
+    const earmarked = rows.reduce((sum, x) => sum + Number(x.saved), 0);
     if (earmarked + add > balance) {
       const free = Math.max(0, balance - earmarked);
       throw new ApiError(
