@@ -132,12 +132,15 @@ model Recipient {
   stellarAccountId String         @unique
 
   safetyNets SafetyNet[]
+  safetyNetsAsBackup SafetyNet[] @relation("SafetyNetBackup")
 }
 
 enum SafetyNetStatus {
   ACTIVE // owner is checking in; money is theirs, family cannot claim yet
   OPENED // check-in window lapsed; family may now receive
-  RECEIVED // family has received the money
+  RECEIVED // family has received the money (no backup guard)
+  GUARDED // primary received; funds in a post-receipt claimable balance with backup fallback
+  BACKUP_RECEIVED // backup beneficiary received after primary stopped checking in
   CLOSED // owner took the money back / cancelled
 }
 
@@ -169,6 +172,16 @@ model SafetyNet {
   recipient   Recipient @relation(fields: [recipientId], references: [id])
   recipientId String
 
+  // Optional backup if the primary receiver can't keep checking in after receipt.
+  backupRecipient   Recipient? @relation("SafetyNetBackup", fields: [backupRecipientId], references: [id])
+  backupRecipientId String?
+
+  // Post-receipt guard (Stellar claimable balance held on the primary receiver's account).
+  postReceiptBalanceId            String?
+  postReceiptUnlockAt             DateTime?
+  postReceiptLastCheckInAt        DateTime?
+  postReceiptCheckInIntervalMinutes Int?
+
   activity Activity[]
 
   @@index([ownerId])
@@ -180,6 +193,8 @@ enum ActivityType {
   CHECKED_IN
   OPENED_TO_FAMILY
   RECEIVED
+  RECEIVER_CHECKED_IN
+  BACKUP_RECEIVED
   CLOSED
 }
 

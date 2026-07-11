@@ -19,6 +19,8 @@ class SafetyNetService {
     amount: string;
     recipientId: string;
     checkInIntervalMinutes?: number;
+    backupRecipientId?: string;
+    postReceiptCheckInIntervalMinutes?: number;
     kind?: string;
     opensAt?: string;
   }): Promise<SafetyNet> {

@@ -11,8 +11,10 @@ export function SafetyNetCard({ net }: { net: SafetyNet }) {
   const open = net.status === "ACTIVE" && Date.parse(net.unlockAt) <= Date.now();
 
   const tone =
-    net.status === "RECEIVED"
+    net.status === "RECEIVED" || net.status === "BACKUP_RECEIVED"
       ? "received"
+      : net.status === "GUARDED"
+      ? "active"
       : net.status === "CLOSED"
       ? "closed"
       : open
@@ -56,7 +58,13 @@ export function SafetyNetCard({ net }: { net: SafetyNet }) {
         </div>
       ) : (
         <p className="mt-5 text-[14px] text-subtle">
-          {net.status === "RECEIVED" ? `${net.forName} has received this.` : "You took this back."}
+          {net.status === "RECEIVED"
+            ? `${net.forName} has received this.`
+            : net.status === "GUARDED"
+            ? `${net.forName} has this — ${net.backupName ?? "backup"} is next if they can't check in.`
+            : net.status === "BACKUP_RECEIVED"
+            ? `${net.backupName ?? "Backup"} received this after ${net.forName} couldn't check in.`
+            : "You took this back."}
         </p>
       )}
     </Link>

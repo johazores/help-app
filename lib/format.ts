@@ -52,6 +52,8 @@ export function windowProgress(lastCheckInIso: string, unlockIso: string): numbe
 
 export function statusLabel(status: SafetyNetStatus, isOpen: boolean): string {
   if (status === "RECEIVED") return "Received";
+  if (status === "GUARDED") return "Received — guarded";
+  if (status === "BACKUP_RECEIVED") return "Received by backup";
   if (status === "CLOSED") return "Taken back";
   if (isOpen) return "Open to family";
   return "Watching over";
@@ -122,5 +124,7 @@ export const TX_STATUS: Record<string, TxStatusMeta> = {
   CHECKED_IN: { label: "Completed", tone: "received", meaning: "Your check-in was recorded." },
   OPENED_TO_FAMILY: { label: "Open", tone: "open", meaning: "Now available for your family to receive." },
   RECEIVED: { label: "Completed", tone: "received", meaning: "Your family received the money." },
+  RECEIVER_CHECKED_IN: { label: "Completed", tone: "received", meaning: "The receiver checked in; the money stays theirs." },
+  BACKUP_RECEIVED: { label: "Completed", tone: "received", meaning: "The backup person received the money." },
   CLOSED: { label: "Completed", tone: "received", meaning: "The money was returned to you." },
 };

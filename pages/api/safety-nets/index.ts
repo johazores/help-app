@@ -10,12 +10,16 @@ export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
     res.status(200).json(await safetyNetService.list(user.id));
     return;
   }
-  const { label, amount, recipientId, checkInIntervalMinutes, kind, opensAt } = req.body ?? {};
+  const { label, amount, recipientId, checkInIntervalMinutes, kind, opensAt, backupRecipientId, postReceiptCheckInIntervalMinutes } = req.body ?? {};
   const created = await safetyNetService.create(user.id, {
     label,
     amount,
     recipientId,
     checkInIntervalMinutes: Number(checkInIntervalMinutes),
+    backupRecipientId: backupRecipientId ? String(backupRecipientId) : undefined,
+    postReceiptCheckInIntervalMinutes: postReceiptCheckInIntervalMinutes
+      ? Number(postReceiptCheckInIntervalMinutes)
+      : undefined,
     kind: kind ? String(kind) : undefined,
     opensAt: opensAt ? String(opensAt) : undefined,
   });

@@ -7,25 +7,35 @@ import { recipientService } from "@/server/services/recipient-service";
 import { walletService } from "@/server/services/wallet-service";
 
 const MINUTE_MS = 60 * 1000;
+const CHECK_IN_INTERVALS = [1, 10080, 43200, 129600];
 
 function makeClaimCode(): string {
-  // 8 URL-safe characters — short enough to hand to a family member.
   return randomBytes(6).toString("base64url").slice(0, 8);
 }
 
+type NetRow = SafetyNet & {
+  recipient: { name: string; relationship: string };
+  backupRecipient?: { name: string; relationship: string } | null;
+};
+
 /** Shape sent to the UI. Contains no technical terms. */
-function present(net: SafetyNet & { recipient: { name: string; relationship: string } }) {
+function present(net: NetRow) {
   const now = Date.now();
   const isOpen =
     net.status === SafetyNetStatus.ACTIVE && net.unlockAt.getTime() <= now;
   return {
     id: net.id,
-    kind: (net as { kind?: string }).kind ?? "SAFETY_NET",
-    requestState: (net as { requestState?: string }).requestState ?? "NONE",
+    kind: net.kind ?? "SAFETY_NET",
+    requestState: net.requestState ?? "NONE",
     label: net.label,
     amount: net.amount,
     forName: net.recipient.name,
     forRelationship: net.recipient.relationship,
+    backupName: net.backupRecipient?.name ?? null,
+    backupRelationship: net.backupRecipient?.relationship ?? null,
+    postReceiptCheckInIntervalMinutes: net.postReceiptCheckInIntervalMinutes,
+    postReceiptUnlockAt: net.postReceiptUnlockAt?.toISOString() ?? null,
+    postReceiptLastCheckInAt: net.postReceiptLastCheckInAt?.toISOString() ?? null,
     checkInIntervalMinutes: net.checkInIntervalMinutes,
     unlockAt: net.unlockAt.toISOString(),
     lastCheckInAt: net.lastCheckInAt.toISOString(),
@@ -36,11 +46,15 @@ function present(net: SafetyNet & { recipient: { name: string; relationship: str
   };
 }
 
+function guardInterval(net: SafetyNet): number {
+  return net.postReceiptCheckInIntervalMinutes ?? net.checkInIntervalMinutes;
+}
+
 class SafetyNetService {
   async list(ownerId: string) {
     const nets = await prisma.safetyNet.findMany({
       where: { ownerId },
-      include: { recipient: true },
+      include: { recipient: true, backupRecipient: true },
       orderBy: { createdAt: "desc" },
     });
     return nets.map(present);
@@ -49,30 +63,25 @@ class SafetyNetService {
   async detail(ownerId: string, id: string) {
     const net = await prisma.safetyNet.findFirst({
       where: { id, ownerId },
-      include: { recipient: true, activity: { orderBy: { createdAt: "desc" } } },
+      include: {
+        recipient: true,
+        backupRecipient: true,
+        activity: { orderBy: { createdAt: "desc" } },
+      },
     });
     if (!net) throw new ApiError(404, "We couldn't find that safety net.");
     return {
       ...present(net),
-      activity: net.activity.map(
-        (a: {
-          id: string;
-          type: ActivityType;
-          description: string;
-          txHash: string | null;
-          createdAt: Date;
-        }) => ({
-          id: a.id,
-          type: a.type,
-          description: a.description,
-          txHash: a.txHash,
-          createdAt: a.createdAt.toISOString(),
-        }),
-      ),
+      activity: net.activity.map((a) => ({
+        id: a.id,
+        type: a.type,
+        description: a.description,
+        txHash: a.txHash,
+        createdAt: a.createdAt.toISOString(),
+      })),
     };
   }
 
-  /** Minimal fields for the printable claim card — skips activity history. */
   async cardSummary(ownerId: string, id: string) {
     const net = await prisma.safetyNet.findFirst({
       where: { id, ownerId },
@@ -97,8 +106,10 @@ class SafetyNetService {
       amount: string;
       recipientId: string;
       checkInIntervalMinutes: number;
+      backupRecipientId?: string;
+      postReceiptCheckInIntervalMinutes?: number;
       kind?: string;
-      opensAt?: string; // for gifts: ISO date (or omitted = opens now)
+      opensAt?: string;
     },
   ) {
     const label = input.label.trim();
@@ -110,8 +121,22 @@ class SafetyNetService {
       throw new ApiError(400, "Please enter how much you want to set aside.");
     }
     const interval = Math.round(input.checkInIntervalMinutes) || 43200;
-    if (kind === "SAFETY_NET" && ![1, 10080, 43200, 129600].includes(interval)) {
+    if (kind === "SAFETY_NET" && !CHECK_IN_INTERVALS.includes(interval)) {
       throw new ApiError(400, "Please choose how often you'll check in.");
+    }
+
+    let backupRecipientId: string | null = null;
+    let postReceiptInterval: number | null = null;
+    if (input.backupRecipientId) {
+      if (input.backupRecipientId === input.recipientId) {
+        throw new ApiError(400, "Please choose someone different as the backup.");
+      }
+      const backup = await recipientService.requireOwned(ownerId, input.backupRecipientId);
+      backupRecipientId = backup.id;
+      postReceiptInterval = Math.round(input.postReceiptCheckInIntervalMinutes ?? interval) || interval;
+      if (!CHECK_IN_INTERVALS.includes(postReceiptInterval)) {
+        throw new ApiError(400, "Please choose how often they should check in after receiving.");
+      }
     }
 
     const wallet = await walletService.requireActive(ownerId);
@@ -121,7 +146,6 @@ class SafetyNetService {
     if (kind === "GIFT") {
       unlockAt = input.opensAt ? new Date(input.opensAt) : new Date();
       if (Number.isNaN(unlockAt.getTime())) throw new ApiError(400, "Please choose a valid date.");
-      // A five-minute grace covers clock skew for "send now"; anything earlier is a past date.
       if (unlockAt.getTime() < Date.now() - 5 * 60_000) {
         throw new ApiError(400, "That date has already passed. Please choose today or a future date.");
       }
@@ -141,11 +165,17 @@ class SafetyNetService {
       unlockAt,
     });
 
+    const backup = backupRecipientId
+      ? await prisma.recipient.findUnique({ where: { id: backupRecipientId } })
+      : null;
+
     const net = await prisma.safetyNet.create({
       data: {
         ownerId,
         walletId: wallet.id,
         recipientId: recipient.id,
+        backupRecipientId,
+        postReceiptCheckInIntervalMinutes: postReceiptInterval,
         kind,
         label,
         amount: amountStr,
@@ -159,13 +189,17 @@ class SafetyNetService {
             type: ActivityType.CREATED,
             description:
               kind === "GIFT"
-                ? `You sent ${trimAmount(amountStr)} to ${recipient.name}.`
-                : `You set aside ${trimAmount(amountStr)} for ${recipient.name}.`,
+                ? backup
+                  ? `You sent ${trimAmount(amountStr)} to ${recipient.name}, with ${backup.name} as backup.`
+                  : `You sent ${trimAmount(amountStr)} to ${recipient.name}.`
+                : backup
+                  ? `You set aside ${trimAmount(amountStr)} for ${recipient.name}, with ${backup.name} as backup.`
+                  : `You set aside ${trimAmount(amountStr)} for ${recipient.name}.`,
             txHash,
           },
         },
       },
-      include: { recipient: true },
+      include: { recipient: true, backupRecipient: true },
     });
     return present(net);
   }
@@ -182,7 +216,7 @@ class SafetyNetService {
     if (net.status !== SafetyNetStatus.ACTIVE) {
       throw new ApiError(409, "This safety net can no longer be updated.");
     }
-    if ((net as { kind?: string }).kind === "GIFT") {
+    if (net.kind === "GIFT") {
       throw new ApiError(409, "Gifts don't need check-ins.");
     }
     if (!net.balanceId) throw new ApiError(409, "This safety net isn't ready yet.");
@@ -211,7 +245,7 @@ class SafetyNetService {
           },
         },
       },
-      include: { recipient: true },
+      include: { recipient: true, backupRecipient: true },
     });
     return present(updated);
   }
@@ -246,54 +280,73 @@ class SafetyNetService {
           },
         },
       },
-      include: { recipient: true },
+      include: { recipient: true, backupRecipient: true },
     });
     return present(updated);
   }
 
   // ---- Recipient-facing (by claim code, no login) --------------------------
 
-  async lookupByCode(code: string) {
+  private async netByCode(code: string) {
     const net = await prisma.safetyNet.findUnique({
       where: { claimCode: code },
       include: {
-        recipient: true,
+        recipient: { include: { stellarAccount: true } },
+        backupRecipient: { include: { stellarAccount: true } },
         owner: true,
-        activity: { where: { type: ActivityType.RECEIVED }, take: 1 },
+        activity: {
+          where: { type: { in: [ActivityType.RECEIVED, ActivityType.BACKUP_RECEIVED] } },
+          take: 1,
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
     if (!net) throw new ApiError(404, "This link doesn't lead to anything.");
+    return net;
+  }
+
+  async lookupByCode(code: string) {
+    const net = await this.netByCode(code);
     const now = Date.now();
     const isOpen = net.status === SafetyNetStatus.ACTIVE && net.unlockAt.getTime() <= now;
+    const guardUnlockAt = net.postReceiptUnlockAt?.toISOString() ?? null;
+    const guardIsOpen =
+      net.status === SafetyNetStatus.GUARDED &&
+      guardUnlockAt !== null &&
+      Date.parse(guardUnlockAt) <= now;
+
     return {
       label: net.label,
       amount: net.amount,
       fromName: net.owner.name,
       forName: net.recipient.name,
+      backupName: net.backupRecipient?.name ?? null,
       status: net.status,
       isOpen,
-      kind: (net as { kind?: string }).kind ?? "SAFETY_NET",
-      requestState: (net as { requestState?: string }).requestState ?? "NONE",
+      kind: net.kind,
+      requestState: net.requestState,
       unlockAt: net.unlockAt.toISOString(),
       receivedTxHash: net.activity[0]?.txHash ?? null,
+      hasBackup: Boolean(net.backupRecipientId),
+      guardUnlockAt,
+      guardIsOpen,
+      postReceiptLastCheckInAt: net.postReceiptLastCheckInAt?.toISOString() ?? null,
     };
   }
 
-  /** Family asks to open a safety net early (via the claim link). */
   async requestEarly(code: string) {
     const net = await prisma.safetyNet.findUnique({ where: { claimCode: code } });
     if (!net) throw new ApiError(404, "This link doesn't lead to anything.");
     if (net.status !== SafetyNetStatus.ACTIVE || net.unlockAt.getTime() <= Date.now()) {
       throw new ApiError(409, "This can't be requested right now.");
     }
-    if ((net as { kind?: string }).kind === "GIFT") {
+    if (net.kind === "GIFT") {
       throw new ApiError(409, "This opens on its own — no need to ask.");
     }
     await prisma.safetyNet.update({ where: { id: net.id }, data: { requestState: "REQUESTED" } });
     return { requested: true };
   }
 
-  /** Owner approves an early-open request: the money opens to family right away. */
   async approveEarly(ownerId: string, id: string) {
     const net = await prisma.safetyNet.findFirst({
       where: { id, ownerId },
@@ -328,12 +381,11 @@ class SafetyNetService {
           },
         },
       },
-      include: { recipient: true },
+      include: { recipient: true, backupRecipient: true },
     });
     return present(updated);
   }
 
-  /** Owner dismisses an early-open request. */
   async dismissEarly(ownerId: string, id: string) {
     const net = await prisma.safetyNet.findFirst({ where: { id, ownerId } });
     if (!net) throw new ApiError(404, "We couldn't find that safety net.");
@@ -342,13 +394,12 @@ class SafetyNetService {
   }
 
   async claimByCode(code: string) {
-    const net = await prisma.safetyNet.findUnique({
-      where: { claimCode: code },
-      include: { recipient: { include: { stellarAccount: true } } },
-    });
-    if (!net) throw new ApiError(404, "This link doesn't lead to anything.");
-    if (net.status === SafetyNetStatus.RECEIVED) {
+    const net = await this.netByCode(code);
+    if (net.status === SafetyNetStatus.RECEIVED || net.status === SafetyNetStatus.GUARDED) {
       throw new ApiError(409, "This money has already been received.");
+    }
+    if (net.status === SafetyNetStatus.BACKUP_RECEIVED) {
+      throw new ApiError(409, "This money has already been received by the backup.");
     }
     if (net.status !== SafetyNetStatus.ACTIVE) {
       throw new ApiError(409, "This money is no longer available.");
@@ -357,6 +408,48 @@ class SafetyNetService {
       throw new ApiError(409, "This isn't open yet.");
     }
     if (!net.balanceId) throw new ApiError(409, "This isn't ready yet.");
+
+    const now = new Date();
+    const interval = guardInterval(net);
+    const guardUnlockAt = new Date(now.getTime() + interval * MINUTE_MS);
+
+    if (net.backupRecipientId && net.backupRecipient) {
+      const { guardBalanceId, txHash } = await stellarService.claimWithGuard({
+        recipientAccountId: net.recipient.stellarAccount.id,
+        recipientPublicKey: net.recipient.stellarAccount.publicKey,
+        backupPublicKey: net.backupRecipient.stellarAccount.publicKey,
+        originalBalanceId: net.balanceId,
+        amount: net.amount,
+        guardUnlockAt,
+      });
+
+      await prisma.safetyNet.update({
+        where: { id: net.id },
+        data: {
+          status: SafetyNetStatus.GUARDED,
+          balanceId: null,
+          postReceiptBalanceId: guardBalanceId,
+          postReceiptUnlockAt: guardUnlockAt,
+          postReceiptLastCheckInAt: now,
+          activity: {
+            create: {
+              type: ActivityType.RECEIVED,
+              description: `${net.recipient.name} received ${trimAmount(net.amount)}. If they can't keep checking in, it goes to ${net.backupRecipient.name}.`,
+              txHash,
+            },
+          },
+        },
+      });
+
+      return {
+        amount: net.amount,
+        forName: net.recipient.name,
+        backupName: net.backupRecipient.name,
+        guarded: true,
+        guardUnlockAt: guardUnlockAt.toISOString(),
+        txHash,
+      };
+    }
 
     const { txHash } = await stellarService.claimToRecipient({
       recipientAccountId: net.recipient.stellarAccount.id,
@@ -379,7 +472,93 @@ class SafetyNetService {
       },
     });
 
-    return { amount: net.amount, forName: net.recipient.name, txHash };
+    return { amount: net.amount, forName: net.recipient.name, guarded: false, txHash };
+  }
+
+  /** Primary receiver check-in after receipt — keeps funds from opening to backup. */
+  async receiverCheckInByCode(code: string) {
+    const net = await this.netByCode(code);
+    if (net.status !== SafetyNetStatus.GUARDED) {
+      throw new ApiError(409, "There's nothing to check in right now.");
+    }
+    if (!net.postReceiptBalanceId || !net.backupRecipient) {
+      throw new ApiError(409, "This isn't ready yet.");
+    }
+
+    const interval = guardInterval(net);
+    const newUnlockAt = new Date(Date.now() + interval * MINUTE_MS);
+    const { guardBalanceId, txHash } = await stellarService.resetGuard({
+      recipientAccountId: net.recipient.stellarAccount.id,
+      recipientPublicKey: net.recipient.stellarAccount.publicKey,
+      backupPublicKey: net.backupRecipient.stellarAccount.publicKey,
+      currentBalanceId: net.postReceiptBalanceId,
+      amount: net.amount,
+      newUnlockAt,
+    });
+
+    await prisma.safetyNet.update({
+      where: { id: net.id },
+      data: {
+        postReceiptBalanceId: guardBalanceId,
+        postReceiptUnlockAt: newUnlockAt,
+        postReceiptLastCheckInAt: new Date(),
+        activity: {
+          create: {
+            type: ActivityType.RECEIVER_CHECKED_IN,
+            description: `${net.recipient.name} checked in. The money stays theirs.`,
+            txHash,
+          },
+        },
+      },
+    });
+
+    return {
+      guardUnlockAt: newUnlockAt.toISOString(),
+      backupName: net.backupRecipient.name,
+      txHash,
+    };
+  }
+
+  /** Backup beneficiary receives when the primary receiver stops checking in. */
+  async backupClaimByCode(code: string) {
+    const net = await this.netByCode(code);
+    if (net.status !== SafetyNetStatus.GUARDED) {
+      throw new ApiError(409, "This isn't available to the backup right now.");
+    }
+    if (!net.backupRecipient || !net.postReceiptBalanceId || !net.postReceiptUnlockAt) {
+      throw new ApiError(409, "This isn't ready yet.");
+    }
+    if (net.postReceiptUnlockAt.getTime() > Date.now()) {
+      throw new ApiError(409, "This isn't open to the backup yet.");
+    }
+
+    const { txHash } = await stellarService.claimGuardAsBackup({
+      backupAccountId: net.backupRecipient.stellarAccount.id,
+      backupPublicKey: net.backupRecipient.stellarAccount.publicKey,
+      guardBalanceId: net.postReceiptBalanceId,
+    });
+
+    await prisma.safetyNet.update({
+      where: { id: net.id },
+      data: {
+        status: SafetyNetStatus.BACKUP_RECEIVED,
+        postReceiptBalanceId: null,
+        activity: {
+          create: {
+            type: ActivityType.BACKUP_RECEIVED,
+            description: `${net.backupRecipient.name} received ${trimAmount(net.amount)} after ${net.recipient.name} couldn't check in.`,
+            txHash,
+          },
+        },
+      },
+    });
+
+    return {
+      amount: net.amount,
+      forName: net.backupRecipient.name,
+      primaryName: net.recipient.name,
+      txHash,
+    };
   }
 }
 

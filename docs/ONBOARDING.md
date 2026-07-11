@@ -69,9 +69,12 @@ You can add as many people as you like.
 3. **Give it a short name** — something you’ll recognise, like *Monthly support*.
 4. **Enter the amount** you want to set aside.
 5. **Choose how often you’ll check in** — every week, every month, and so on.
-6. Tap **Set aside money**.
+6. *(Optional)* Turn on **Add a backup person** if you want someone else to receive the money if your loved one gets it but later can't keep checking in. Choose the backup and how often they should check in after receiving.
+7. Tap **Review**, then **Confirm & set aside**.
 
 That’s it. The money is now kept safe, and it’s still completely yours.
+
+> Full details: **[SUCCESSION.md](./SUCCESSION.md)** — including what happens if the receiver passes away after receiving.
 
 ---
 
@@ -101,6 +104,24 @@ So your loved one can receive the money if they ever need to:
 
 They don’t need to sign up for anything. If the money ever opens to them, they just open
 the link and tap one button.
+
+If you set up a **backup person**, share the same link with them too — they'll only be
+able to receive if your loved one stops checking in after receiving.
+
+---
+
+## What if my loved one receives the money but can't keep it?
+
+If you added a **backup person** when you set the money aside:
+
+1. Your loved one receives the money as usual.
+2. They must tap **"I'm okay — check in"** on the same link every so often (you chose how often).
+3. If they can't — for any reason, including if they pass away — the money opens to your **backup person**.
+4. The backup opens the **same link** and taps **Receive**.
+
+This is the same safety-net idea as yours, one step further — enforced on Stellar, not by guesswork.
+
+See **[SUCCESSION.md](./SUCCESSION.md)** for the full picture.
 
 ---
 

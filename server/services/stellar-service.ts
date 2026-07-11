@@ -276,6 +276,107 @@ class StellarService {
     return { txHash: result.hash };
   }
 
+  /**
+   * Primary receives from the original safety net and immediately sets up a
+   * post-receipt guard: same claimable-balance pattern, but on the receiver's
+   * account — primary unconditional, backup time-locked.
+   */
+  async claimWithGuard(params: {
+    recipientAccountId: string;
+    recipientPublicKey: string;
+    backupPublicKey: string;
+    originalBalanceId: string;
+    amount: string;
+    guardUnlockAt: Date;
+  }): Promise<{ guardBalanceId: string; txHash: string }> {
+    const svr = await server();
+    const { networkPassphrase } = await settingsService.stellar();
+    const key = await this.keypairFor(params.recipientAccountId);
+    const source = await svr.loadAccount(params.recipientPublicKey);
+
+    const unlockUnix = Math.floor(params.guardUnlockAt.getTime() / 1000).toString();
+    const claimants = [
+      new Claimant(params.recipientPublicKey, Claimant.predicateUnconditional()),
+      new Claimant(
+        params.backupPublicKey,
+        Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
+      ),
+    ];
+
+    const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
+      .addOperation(Operation.claimClaimableBalance({ balanceId: params.originalBalanceId }))
+      .addOperation(
+        Operation.createClaimableBalance({
+          asset: Asset.native(),
+          amount: params.amount,
+          claimants,
+        }),
+      )
+      .setTimeout(60)
+      .build();
+
+    tx.sign(key);
+    const result = await this.submit(svr, tx);
+    this.invalidateBalance(params.recipientPublicKey);
+    return { guardBalanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
+  }
+
+  /** Primary receiver check-in: reclaim the guard and recreate with a later unlock. */
+  async resetGuard(params: {
+    recipientAccountId: string;
+    recipientPublicKey: string;
+    backupPublicKey: string;
+    currentBalanceId: string;
+    amount: string;
+    newUnlockAt: Date;
+  }): Promise<{ guardBalanceId: string; txHash: string }> {
+    const svr = await server();
+    const { networkPassphrase } = await settingsService.stellar();
+    const key = await this.keypairFor(params.recipientAccountId);
+    const source = await svr.loadAccount(params.recipientPublicKey);
+
+    const unlockUnix = Math.floor(params.newUnlockAt.getTime() / 1000).toString();
+    const claimants = [
+      new Claimant(params.recipientPublicKey, Claimant.predicateUnconditional()),
+      new Claimant(
+        params.backupPublicKey,
+        Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
+      ),
+    ];
+
+    const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
+      .addOperation(Operation.claimClaimableBalance({ balanceId: params.currentBalanceId }))
+      .addOperation(
+        Operation.createClaimableBalance({
+          asset: Asset.native(),
+          amount: params.amount,
+          claimants,
+        }),
+      )
+      .setTimeout(60)
+      .build();
+
+    tx.sign(key);
+    const result = await this.submit(svr, tx);
+    this.invalidateBalance(params.recipientPublicKey);
+    return { guardBalanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
+  }
+
+  /** Backup beneficiary receives after the primary receiver's check-in window lapses. */
+  async claimGuardAsBackup(params: {
+    backupAccountId: string;
+    backupPublicKey: string;
+    guardBalanceId: string;
+  }): Promise<{ txHash: string }> {
+    const result = await this.claimBy({
+      accountId: params.backupAccountId,
+      publicKey: params.backupPublicKey,
+      balanceId: params.guardBalanceId,
+    });
+    this.invalidateBalance(params.backupPublicKey);
+    return result;
+  }
+
   private balanceCache = new Map<string, { balance: string; at: number }>();
   private static BALANCE_CACHE_MS = 20_000;
 

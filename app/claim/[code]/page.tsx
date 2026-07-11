@@ -1,15 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { claimService } from "@/services/claim-service";
-import { formatDate, formatMoney, referenceId } from "@/lib/format";
+import { countdown, formatDate, formatMoney, referenceId } from "@/lib/format";
 import type { ClaimInfo } from "@/services/types";
 
-type Screen = "loading" | "not-open" | "ready" | "received" | "gone" | "error";
+type Screen =
+  | "loading"
+  | "not-open"
+  | "ready"
+  | "received"
+  | "guarded"
+  | "backup-received"
+  | "gone"
+  | "error";
+
+function resolveScreen(data: ClaimInfo): Screen {
+  if (data.status === "CLOSED") return "gone";
+  if (data.status === "BACKUP_RECEIVED") return "backup-received";
+  if (data.status === "GUARDED") return "guarded";
+  if (data.status === "RECEIVED") return "received";
+  if (data.isOpen) return "ready";
+  return "not-open";
+}
 
 /**
  * The receiver's journey. A loved one lands here from a link — often on a phone,
@@ -26,8 +43,21 @@ export default function ClaimPage() {
   const [receivedRef, setReceivedRef] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [backupClaiming, setBackupClaiming] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [requested, setRequested] = useState(false);
+  const [, setTick] = useState(0);
+
+  const refresh = useCallback(async () => {
+    const data = await claimService.lookup(code);
+    setInfo(data);
+    setScreen(resolveScreen(data));
+    if (data.receivedTxHash) {
+      setReceivedRef(referenceId(data.receivedTxHash, code));
+    }
+    return data;
+  }, [code]);
 
   async function requestEarly() {
     setRequesting(true);
@@ -42,36 +72,18 @@ export default function ClaimPage() {
   }
 
   useEffect(() => {
-    claimService
-      .lookup(code)
-      .then((data) => {
-        setInfo(data);
-        if (data.status === "RECEIVED") {
-          setReceivedRef(referenceId(data.receivedTxHash, code));
-          setScreen("received");
-        } else if (data.status === "CLOSED") setScreen("gone");
-        else if (data.isOpen) setScreen("ready");
-        else setScreen("not-open");
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "This link doesn't work.");
-        setScreen("error");
-      });
-  }, [code]);
+    refresh().catch((err) => {
+      setError(err instanceof Error ? err.message : "This link doesn't work.");
+      setScreen("error");
+    });
+  }, [refresh]);
 
-  // While waiting, quietly re-check so the screen opens on its own.
   useEffect(() => {
-    if (screen !== "not-open") return;
+    if (screen !== "not-open" && screen !== "guarded") return;
 
     const poll = () => {
       if (document.visibilityState !== "visible") return;
-      claimService
-        .lookup(code)
-        .then((data) => {
-          setInfo(data);
-          if (data.isOpen) setScreen("ready");
-        })
-        .catch(() => {});
+      refresh().catch(() => {});
     };
 
     const t = setInterval(poll, 12_000);
@@ -80,7 +92,13 @@ export default function ClaimPage() {
       clearInterval(t);
       document.removeEventListener("visibilitychange", poll);
     };
-  }, [screen, code]);
+  }, [screen, refresh]);
+
+  useEffect(() => {
+    if (screen !== "guarded") return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [screen]);
 
   async function receive() {
     setClaiming(true);
@@ -89,12 +107,45 @@ export default function ClaimPage() {
       const result = await claimService.claim(code);
       setReceivedAmount(result.amount);
       setReceivedRef(referenceId(result.txHash, code));
-      setScreen("received");
+      await refresh();
+      setScreen(result.guarded ? "guarded" : "received");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't receive the money.");
+    } finally {
       setClaiming(false);
     }
   }
+
+  async function receiverCheckIn() {
+    setCheckingIn(true);
+    setError(null);
+    try {
+      await claimService.receiverCheckIn(code);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't check in.");
+    } finally {
+      setCheckingIn(false);
+    }
+  }
+
+  async function backupReceive() {
+    setBackupClaiming(true);
+    setError(null);
+    try {
+      const result = await claimService.backupClaim(code);
+      setReceivedAmount(result.amount);
+      setReceivedRef(referenceId(result.txHash, code));
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't receive the money.");
+    } finally {
+      setBackupClaiming(false);
+    }
+  }
+
+  const guardRemaining =
+    info?.guardUnlockAt && screen === "guarded" ? countdown(info.guardUnlockAt).text : null;
 
   return (
     <div className="flex min-h-screen flex-col bg-paper">
@@ -104,7 +155,6 @@ export default function ClaimPage() {
 
       <div className="container-page flex flex-1 items-start justify-center py-6 sm:items-center sm:py-10">
         <div className="w-full max-w-md">
-          {/* Loading */}
           {screen === "loading" ? (
             <div className="py-16 text-center">
               <Spinner className="mx-auto h-8 w-8 text-ink" />
@@ -112,20 +162,17 @@ export default function ClaimPage() {
             </div>
           ) : null}
 
-          {/* Broken link */}
           {screen === "error" ? (
             <div className="card overflow-hidden p-6 text-center sm:p-8">
               <h1 className="font-display text-[26px] font-bold leading-tight text-ink">
                 Hmm, this link isn&rsquo;t working
               </h1>
               <p className="mt-2 text-[17px] text-body">
-                Please check that you opened the full link, exactly as it was sent to you. If it
-                still doesn&rsquo;t work, ask the person who sent it to share it again.
+                {error ?? "Please check that you opened the full link, exactly as it was sent to you."}
               </p>
             </div>
           ) : null}
 
-          {/* Not open yet — reassure, explain, no action needed */}
           {screen === "not-open" && info ? (
             <>
               <div className="card overflow-hidden p-6 text-center sm:p-8">
@@ -173,7 +220,6 @@ export default function ClaimPage() {
             </>
           ) : null}
 
-          {/* Ready — explain exactly what Receive does before they tap */}
           {screen === "ready" && info ? (
             <div className="card overflow-hidden p-6 text-center sm:p-8">
               <p className="break-words text-[16px] text-subtle">From {info.fromName}, for you</p>
@@ -190,7 +236,9 @@ export default function ClaimPage() {
                   Receive {formatMoney(info.amount)}
                 </Button>
                 <p className="mt-3 text-[14px] leading-relaxed text-subtle">
-                  Tapping Receive makes this money yours, kept safe here in Sagip under your name.
+                  {info.hasBackup && info.backupName
+                    ? `This money becomes yours. If you can't check in later, ${info.backupName} can receive it — ${info.fromName} set that up for you.`
+                    : "Tapping Receive makes this money yours, kept safe here in Sagip under your name."}
                 </p>
               </div>
 
@@ -199,19 +247,73 @@ export default function ClaimPage() {
                   {error} You can simply try again — nothing is lost.
                 </p>
               ) : null}
-
-              <div className="mt-6 rounded-xl bg-ink/5 p-4 text-left text-[14px] leading-relaxed text-body">
-                <p className="font-semibold text-ink">Good to know</p>
-                <p className="mt-1">
-                  Moving this money to GCash, Maya, or a bank account isn&rsquo;t available just yet —
-                  we&rsquo;re working with licensed payment partners to add it. Until then, your money
-                  stays safe here, and you can come back to this page anytime.
-                </p>
-              </div>
             </div>
           ) : null}
 
-          {/* Received — success + honest withdraw preview */}
+          {screen === "guarded" && info ? (
+            <>
+              <div className="card overflow-hidden p-6 text-center sm:p-8">
+                <p className="text-[16px] text-subtle">For {info.forName}</p>
+                <h1 className="mt-1 font-display text-[26px] font-bold leading-tight text-ink">
+                  This money is yours
+                </h1>
+                <p className="mt-6 font-display text-[clamp(32px,9vw,44px)] font-bold leading-tight text-ink">
+                  {formatMoney(info.amount)}
+                </p>
+                <div className="mt-6 rounded-xl bg-sage/10 p-5 text-left text-[15px] leading-relaxed text-body">
+                  <p className="font-semibold text-ink">Tap &ldquo;I&rsquo;m okay&rdquo; now and then</p>
+                  <p className="mt-2">
+                    Each check-in keeps this money in your hands. If you ever can&rsquo;t check in
+                    {info.guardUnlockAt ? (
+                      <>
+                        {" "}
+                        — from{" "}
+                        <span className="font-semibold text-ink">{formatDate(info.guardUnlockAt)}</span>
+                      </>
+                    ) : null}
+                    {info.backupName ? (
+                      <>
+                        {" "}
+                        — <span className="font-semibold text-ink">{info.backupName}</span> can receive
+                        it for you.
+                      </>
+                    ) : null}
+                  </p>
+                  {guardRemaining && !info.guardIsOpen ? (
+                    <p className="mt-3 text-[14px] font-semibold text-sage">
+                      Next check-in window opens in {guardRemaining}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="mt-6">
+                  <Button fullWidth loading={checkingIn} onClick={receiverCheckIn}>
+                    I&rsquo;m okay — check in
+                  </Button>
+                </div>
+                {error ? (
+                  <p className="mt-4 rounded-xl bg-danger/10 px-4 py-3 text-[15px] font-medium text-danger" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+              </div>
+
+              {info.backupName && info.guardIsOpen ? (
+                <div className="card mt-4 overflow-hidden p-6 text-center">
+                  <h2 className="text-[18px] font-bold text-ink">For {info.backupName}</h2>
+                  <p className="mt-2 text-[15px] leading-relaxed text-body">
+                    {info.forName} hasn&rsquo;t checked in. If you&rsquo;re {info.backupName}, you
+                    can receive this money now.
+                  </p>
+                  <div className="mt-4">
+                    <Button fullWidth loading={backupClaiming} onClick={backupReceive}>
+                      Receive {formatMoney(info.amount)}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
           {screen === "received" && info ? (
             <>
               <div className="card overflow-hidden p-6 text-center sm:p-8">
@@ -233,43 +335,33 @@ export default function ClaimPage() {
                     <span className="font-mono font-semibold text-ink">{receivedRef}</span>
                   </p>
                 ) : null}
-                <p className="mt-3 text-[14px] text-subtle">
-                  Save this link — it&rsquo;s your proof, and it&rsquo;s where withdrawing will happen.
-                </p>
-              </div>
-
-              {/* Withdraw — coming soon, clearly not available yet */}
-              <div className="card mt-4 overflow-hidden p-6">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[18px] font-bold text-ink">Move it to your pocket</h2>
-                  <span className="shrink-0 rounded-full bg-marigold/20 px-3 py-1 text-[12px] font-bold uppercase tracking-wide text-marigold-deep">
-                    Coming soon
-                  </span>
-                </div>
-                <p className="mt-2 text-[15px] leading-relaxed text-body">
-                  Soon you&rsquo;ll be able to move this money straight to:
-                </p>
-                <div className="mt-4 space-y-2" aria-disabled="true">
-                  {["GCash", "Maya", "Bank account"].map((option) => (
-                    <div
-                      key={option}
-                      className="flex items-center justify-between rounded-xl border border-line bg-paper/60 px-4 py-3.5 opacity-60"
-                    >
-                      <span className="text-[16px] font-semibold text-ink">{option}</span>
-                      <span className="text-[13px] font-semibold text-subtle">Not yet available</span>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-4 text-[14px] leading-relaxed text-subtle">
-                  We&rsquo;re partnering with licensed payment providers in the Philippines to make
-                  this possible. Your money is safe here in the meantime — nothing expires, and no
-                  one else can touch it.
-                </p>
               </div>
             </>
           ) : null}
 
-          {/* Taken back */}
+          {screen === "backup-received" && info ? (
+            <div className="card overflow-hidden p-6 text-center sm:p-8">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-marigold">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5 12.5 10 17 19 7" stroke="#0C3B3A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <h1 className="mt-5 font-display text-[28px] font-bold leading-tight text-ink">
+                This money is now yours
+              </h1>
+              <p className="mt-2 text-[17px] leading-relaxed text-body">
+                {formatMoney(receivedAmount || info.amount)} is safely yours. {info.forName} couldn&rsquo;t
+                keep checking in, so {info.fromName} asked Sagip to pass it to you as backup.
+              </p>
+              {receivedRef ? (
+                <p className="mt-4 rounded-xl bg-paper px-4 py-3 text-[14px] text-subtle">
+                  Your receipt number:{" "}
+                  <span className="font-mono font-semibold text-ink">{receivedRef}</span>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {screen === "gone" && info ? (
             <div className="card overflow-hidden p-6 text-center sm:p-8">
               <h1 className="font-display text-[26px] font-bold leading-tight text-ink">

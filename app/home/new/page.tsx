@@ -48,6 +48,9 @@ export default function NewSafetyNetPage() {
   const [label, setLabel] = useState("");
   const [amount, setAmount] = useState("");
   const [intervalMinutes, setIntervalMinutes] = useState(43200);
+  const [useBackup, setUseBackup] = useState(false);
+  const [backupRecipientId, setBackupRecipientId] = useState("");
+  const [receiverIntervalMinutes, setReceiverIntervalMinutes] = useState(43200);
 
   const [addingNew, setAddingNew] = useState(false);
   const [newName, setNewName] = useState("");
@@ -127,6 +130,10 @@ export default function NewSafetyNetPage() {
       setError("You don't have enough funds for this. Please add funds first.");
       return;
     }
+    if (useBackup && !backupRecipientId) {
+      setError("Please choose a backup person, or turn off the backup option.");
+      return;
+    }
     setReviewing(true);
   }
 
@@ -139,6 +146,8 @@ export default function NewSafetyNetPage() {
         amount,
         recipientId,
         checkInIntervalMinutes: intervalMinutes,
+        backupRecipientId: useBackup ? backupRecipientId : undefined,
+        postReceiptCheckInIntervalMinutes: useBackup ? receiverIntervalMinutes : undefined,
       });
       router.push(`/home/${net.id}?created=1`);
     } catch (err) {
@@ -159,6 +168,8 @@ export default function NewSafetyNetPage() {
 
   const amt = Number(amount) || 0;
   const recipientName = recipients.find((r) => r.id === recipientId)?.name ?? "your loved one";
+  const backupName = recipients.find((r) => r.id === backupRecipientId)?.name ?? "your backup";
+  const backupChoices = recipients.filter((r) => r.id !== recipientId);
   const balanceNum = Number(balance) || 0;
   const balanceAfter = balanceNum - amt;
   const peso = (v: number) => (phpRate !== null ? `≈ ${formatFiat(convertFromXlm(v, phpRate), "PHP")}` : "");
@@ -293,6 +304,93 @@ export default function NewSafetyNetPage() {
           </div>
         </section>
 
+        {/* Backup beneficiary — if the receiver can't keep checking in after receipt */}
+        <section>
+          <h2 className="text-[19px] font-bold text-ink">What if they can&rsquo;t keep it?</h2>
+          <p className="mt-1 hint">
+            Optional: name someone else who can receive this money if {recipientName || "your loved one"}{" "}
+            receives it but later can&rsquo;t check in — for example, if they pass away.
+          </p>
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-4">
+            <input
+              type="checkbox"
+              className="mt-1 h-5 w-5 accent-[#0C3B3A]"
+              checked={useBackup}
+              onChange={(e) => {
+                setUseBackup(e.target.checked);
+                if (e.target.checked && !backupRecipientId && backupChoices[0]) {
+                  setBackupRecipientId(backupChoices[0].id);
+                }
+              }}
+            />
+            <span>
+              <span className="block text-[17px] font-semibold text-ink">Add a backup person</span>
+              <span className="block text-[15px] text-subtle">
+                Same safety-net idea, one step further — enforced on Stellar, not by us.
+              </span>
+            </span>
+          </label>
+
+          {useBackup ? (
+            <div className="mt-4 space-y-4 rounded-xl border border-line bg-white p-5">
+              {backupChoices.length === 0 ? (
+                <p className="text-[15px] text-body">
+                  Add another loved one first — the backup must be someone different from the primary receiver.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    {backupChoices.map((r) => (
+                      <label
+                        key={r.id}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 ${
+                          backupRecipientId === r.id ? "border-ink bg-ink/5" : "border-line"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="backup"
+                          className="h-5 w-5 accent-[#0C3B3A]"
+                          checked={backupRecipientId === r.id}
+                          onChange={() => setBackupRecipientId(r.id)}
+                        />
+                        <span>
+                          <span className="block text-[17px] font-semibold text-ink">{r.name}</span>
+                          <span className="block text-[15px] text-subtle">{r.relationship}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div>
+                    <p className="text-[15px] font-semibold text-ink">
+                      How often should {recipientName} check in after receiving?
+                    </p>
+                    <p className="mt-1 text-[14px] text-subtle">
+                      If they don&rsquo;t, {backupName} can receive the money.
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      {intervals.map((i) => (
+                        <button
+                          key={i.minutes}
+                          type="button"
+                          onClick={() => setReceiverIntervalMinutes(i.minutes)}
+                          className={`rounded-xl border p-3 text-left ${
+                            receiverIntervalMinutes === i.minutes
+                              ? "border-ink bg-ink text-paper"
+                              : "border-line bg-paper text-ink"
+                          }`}
+                        >
+                          <span className="block text-[15px] font-semibold">{i.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+        </section>
+
         {error ? (
           <p className="text-[15px] font-medium text-danger" role="alert">
             {error}
@@ -328,6 +426,17 @@ export default function NewSafetyNetPage() {
                 <dt className="text-subtle">Opens to family</dt>
                 <dd className="font-semibold text-ink">if you don&rsquo;t check in {intervalLabel(intervalMinutes)}</dd>
               </div>
+              {useBackup && backupRecipientId ? (
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-subtle">If {recipientName} can&rsquo;t check in after receiving</dt>
+                  <dd className="text-right font-semibold text-ink">
+                    goes to {backupName}
+                    <span className="block text-[13px] font-normal text-subtle">
+                      after {intervalLabel(receiverIntervalMinutes)} without check-in
+                    </span>
+                  </dd>
+                </div>
+              ) : null}
               <div className="flex items-baseline justify-between gap-4">
                 <dt className="text-subtle">Network fee</dt>
                 <dd className="font-semibold text-ink">less than {formatMoney(NETWORK_FEE_XLM)} (free)</dd>

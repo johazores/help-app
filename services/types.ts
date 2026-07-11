@@ -1,5 +1,5 @@
-export type SafetyNetStatus = "ACTIVE" | "OPENED" | "RECEIVED" | "CLOSED";
-export type ActivityType = "CREATED" | "CHECKED_IN" | "OPENED_TO_FAMILY" | "RECEIVED" | "CLOSED";
+export type SafetyNetStatus = "ACTIVE" | "OPENED" | "RECEIVED" | "GUARDED" | "BACKUP_RECEIVED" | "CLOSED";
+export type ActivityType = "CREATED" | "CHECKED_IN" | "OPENED_TO_FAMILY" | "RECEIVED" | "RECEIVER_CHECKED_IN" | "BACKUP_RECEIVED" | "CLOSED";
 
 export type Role = "USER" | "ROOT"; // retained for AdminUser display only
 
@@ -100,6 +100,11 @@ export interface SafetyNet {
   amount: string;
   forName: string;
   forRelationship: string;
+  backupName: string | null;
+  backupRelationship: string | null;
+  postReceiptCheckInIntervalMinutes: number | null;
+  postReceiptUnlockAt: string | null;
+  postReceiptLastCheckInAt: string | null;
   checkInIntervalMinutes: number;
   unlockAt: string;
   lastCheckInAt: string;
@@ -134,10 +139,15 @@ export interface ClaimInfo {
   amount: string;
   fromName: string;
   forName: string;
+  backupName: string | null;
   status: SafetyNetStatus;
   isOpen: boolean;
   unlockAt: string;
   receivedTxHash: string | null;
+  hasBackup: boolean;
+  guardUnlockAt: string | null;
+  guardIsOpen: boolean;
+  postReceiptLastCheckInAt: string | null;
 }
 
 export interface Rates {

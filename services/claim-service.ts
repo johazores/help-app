@@ -6,11 +6,26 @@ class ClaimService {
     return apiClient.request<ClaimInfo>(`/claim/${code}`, { auth: false });
   }
 
-  async claim(code: string): Promise<{ amount: string; forName: string; txHash: string }> {
-    return apiClient.request<{ amount: string; forName: string; txHash: string }>(`/claim/${code}`, {
+  async claim(code: string): Promise<{
+    amount: string;
+    forName: string;
+    backupName?: string;
+    guarded: boolean;
+    guardUnlockAt?: string;
+    txHash: string;
+  }> {
+    return apiClient.request(`/claim/${code}`, {
       method: "POST",
       auth: false,
     });
+  }
+
+  async receiverCheckIn(code: string): Promise<{ guardUnlockAt: string; backupName: string; txHash: string }> {
+    return apiClient.request(`/claim/${code}/check-in`, { method: "POST", auth: false });
+  }
+
+  async backupClaim(code: string): Promise<{ amount: string; forName: string; primaryName: string; txHash: string }> {
+    return apiClient.request(`/claim/${code}/backup`, { method: "POST", auth: false });
   }
 
   async requestEarly(code: string): Promise<void> {

@@ -9,6 +9,8 @@ const dot: Record<Activity["type"], string> = {
   CHECKED_IN: "bg-sage",
   OPENED_TO_FAMILY: "bg-marigold",
   RECEIVED: "bg-marigold",
+  RECEIVER_CHECKED_IN: "bg-sage",
+  BACKUP_RECEIVED: "bg-marigold",
   CLOSED: "bg-line",
 };
 
