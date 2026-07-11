@@ -9,6 +9,32 @@ This is the answer to: *"What if the receiver already got the money, then died?"
 
 ---
 
+## If the receiver passes away after receiving
+
+This is the scenario the backup beneficiary is for — not a lost phone, but **death (or any reason they can no longer act)** after the money was successfully transferred.
+
+### With a backup person configured ✅
+
+1. Primary taps **Receive** → money enters a **post-receipt guard** on Stellar (status: **Received — guarded**).
+2. While alive, primary taps **"I'm okay"** on their link to keep the money theirs.
+3. If they **pass away** (or become unable to check in), they naturally stop checking in.
+4. After the check-in window lapses, the **backup person** opens the same link and taps **Receive**.
+5. Money moves to the backup — enforced by Stellar, not by Sagip staff or death certificates.
+
+**We do not verify death on-chain.** Succession works the same way as the original safety net: **no check-in → next person in line can receive.** That is intentional — it works for death, coma, lost capacity, or a lost phone without needing courts or paperwork.
+
+### Without a backup person ⚠️
+
+If you did **not** set a backup when sending:
+
+- Primary receives → status **Received** → money sits in their Sagip account permanently from the app's perspective.
+- If they pass away, there is **no automatic next step** in Sagip v1.
+- Funds are not lost on-chain, but **no family member can claim them through the app** without legal estate processes (future: custodial recovery with documentation).
+
+**Recommendation:** always add a backup when the amount matters — a sibling, spouse, or adult child who should receive if the primary cannot continue.
+
+---
+
 ## How it works (plain language)
 
 When you set aside money, you can optionally name a **backup person** — someone different from the primary receiver.
@@ -90,6 +116,28 @@ Use **Every minute** for both the sender check-in interval and the receiver chec
 
 ---
 
+## Lost phone after receiving
+
+The money **stays safe** — it's on Stellar under the receiver's name. Losing the phone does **not** lose the funds. What they lose is easy access to the **claim link**.
+
+### Three ways to get back in
+
+1. **Sender re-shares the link** — from the safety net in their Sagip app (**Copy link** works even after the money was received).
+2. **Find your link** — at `/claim/recover`, enter the mobile number saved when they were added as a loved one.
+3. **Printed card** — the QR/link card they were given when the money was set aside.
+
+### If they had a backup configured
+
+While **GUARDED**, the primary must check in on the link. If they lose their phone and **can't** check in in time, the backup can receive — same as if they passed away. That's why:
+
+- Save the link in **more than one place** (print a card, tell the sender, save on another device).
+- Add their **mobile number** when you add them as a loved one, so **Find your link** works.
+- If it's urgent, the **sender can text the link again** immediately from the app.
+
+The funds were never on the lost phone itself — only the link was.
+
+---
+
 ## API endpoints
 
 | Method | Path | Who | Action |
@@ -98,3 +146,4 @@ Use **Every minute** for both the sender check-in interval and the receiver chec
 | `POST` | `/api/claim/:code` | Primary | Receive (creates guard if backup set) |
 | `POST` | `/api/claim/:code/check-in` | Primary | Post-receipt check-in |
 | `POST` | `/api/claim/:code/backup` | Backup | Receive after guard opens |
+| `POST` | `/api/claim/recover` | Public | Look up links by loved one's mobile number |

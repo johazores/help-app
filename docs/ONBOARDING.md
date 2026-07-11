@@ -56,7 +56,8 @@ This is the person you want to look after.
 2. Tap **Add someone new**.
 3. Type their **name** (for example, *Elena dela Cruz*).
 4. Type how they’re **related to you** (for example, *Mother*).
-5. Tap **Save**.
+5. *(Optional)* Add their **mobile number** — so they can use **Find your link** if they lose their phone.
+6. Tap **Save**.
 
 You can add as many people as you like.
 
@@ -122,6 +123,18 @@ If you added a **backup person** when you set the money aside:
 This is the same safety-net idea as yours, one step further — enforced on Stellar, not by guesswork.
 
 See **[SUCCESSION.md](./SUCCESSION.md)** for the full picture.
+
+---
+
+## What if they lose their phone after receiving?
+
+The money is **not lost** — it stays safe in Sagip. Only the **link** on their phone is gone.
+
+1. **You** can open the safety net in your app and tap **Copy link** again (works even after they received).
+2. **They** can go to **Find your link** on any browser and enter the mobile number you saved for them.
+3. **Printed card** — if you gave them one, the QR still works.
+
+If you set a **backup person**, remind them to check in regularly. If the primary can't check in because of a lost phone, the backup may receive after the timer lapses — so re-sharing the link quickly matters.
 
 ---
 

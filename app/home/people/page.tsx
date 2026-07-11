@@ -19,6 +19,7 @@ export default function PeoplePage() {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [relationship, setRelationship] = useState("");
+  const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +46,7 @@ export default function PeoplePage() {
     }
     setSaving(true);
     try {
-      const created = await recipientService.create({ name, relationship });
+      const created = await recipientService.create({ name, relationship, phone: phone || undefined });
       setRecipients((prev) => [...prev, created]);
       setName("");
       setRelationship("");
@@ -96,6 +97,11 @@ export default function PeoplePage() {
             <Field label="How are they related to you?" error={error ?? undefined}>
               {(id) => (
                 <Input id={id} value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="Mother" />
+              )}
+            </Field>
+            <Field label="Their mobile number (optional)" hint="Lets them find their link again if they lose their phone.">
+              {(id) => (
+                <Input id={id} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09XX XXX XXXX" inputMode="tel" />
               )}
             </Field>
             <div className="flex gap-3">

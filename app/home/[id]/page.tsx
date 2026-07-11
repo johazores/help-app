@@ -12,7 +12,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { configService } from "@/services/config-service";
-import { formatMoney, statusLabel } from "@/lib/format";
+import { formatMoney, formatDate, statusLabel } from "@/lib/format";
 import type { AppConfig, SafetyNetDetail } from "@/services/types";
 
 export default function SafetyNetDetailPage() {
@@ -110,7 +110,21 @@ export default function SafetyNetDetailPage() {
   const openNow = active && Date.parse(net.unlockAt) <= Date.now();
   const streak = net.activity.filter((a) => a.type === "CHECKED_IN").length;
   const tone =
-    net.status === "RECEIVED" ? "received" : net.status === "CLOSED" ? "closed" : openNow ? "open" : "active";
+    net.status === "RECEIVED" || net.status === "BACKUP_RECEIVED"
+      ? "received"
+      : net.status === "GUARDED"
+      ? "active"
+      : net.status === "CLOSED"
+      ? "closed"
+      : openNow
+      ? "open"
+      : "active";
+
+  const showShareLink =
+    net.status === "ACTIVE" ||
+    net.status === "GUARDED" ||
+    net.status === "RECEIVED" ||
+    net.status === "BACKUP_RECEIVED";
 
   return (
     <AppShell>
@@ -179,12 +193,32 @@ export default function SafetyNetDetailPage() {
 
         {/* Right: sharing + secondary actions + activity */}
         <div className="space-y-6">
-          {active ? (
+          {showShareLink ? (
             <div className="card p-6">
-              <h2 className="text-[18px] font-bold text-ink">Share with {net.forName}</h2>
+              <h2 className="text-[18px] font-bold text-ink">
+                {net.status === "ACTIVE" ? `Share with ${net.forName}` : "Their link"}
+              </h2>
               <p className="mt-1 text-[15px] text-body">
-                Send this link to {net.forName}. If the money ever opens to them, they&rsquo;ll be able to
-                receive it here — no account needed.
+                {net.status === "ACTIVE" ? (
+                  <>
+                    Send this link to {net.forName}. If the money ever opens to them, they&rsquo;ll be able to
+                    receive it here — no account needed.
+                  </>
+                ) : net.status === "GUARDED" ? (
+                  <>
+                    {net.forName} uses this link to check in and keep the money. If they lose their phone,
+                    send it again — or ask them to visit{" "}
+                    <Link href="/claim/recover" className="font-semibold text-ink underline">
+                      Find your link
+                    </Link>{" "}
+                    if you saved their mobile number.
+                  </>
+                ) : (
+                  <>
+                    This is {net.forName}&rsquo;s proof and access link. Send it again anytime if they
+                    lose their phone.
+                  </>
+                )}
               </p>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <code className="min-w-0 flex-1 break-all rounded-xl border border-line bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink sm:text-[14px]">
@@ -197,6 +231,28 @@ export default function SafetyNetDetailPage() {
               <Link href={`/home/${net.id}/card`} className="mt-3 inline-block text-[14px] font-semibold text-ink underline">
                 Print a card with this link
               </Link>
+            </div>
+          ) : null}
+
+          {net.status === "RECEIVED" && !net.backupName ? (
+            <div className="card border border-line bg-paper p-6">
+              <h2 className="text-[18px] font-bold text-ink">After {net.forName} received</h2>
+              <p className="mt-2 text-[15px] leading-relaxed text-body">
+                No backup was set for this safety net. If {net.forName} passes away, the money stays in
+                their account — it does not automatically pass to someone else in Sagip. For future safety
+                nets, add a backup person when you set money aside.
+              </p>
+            </div>
+          ) : null}
+
+          {net.status === "GUARDED" && net.backupName ? (
+            <div className="card border border-sage/30 bg-sage/5 p-6">
+              <h2 className="text-[18px] font-bold text-ink">Succession is active</h2>
+              <p className="mt-2 text-[15px] leading-relaxed text-body">
+                {net.forName} received this money and must check in on their link. If they pass away or
+                can&rsquo;t check in, {net.backupName} can receive it after{" "}
+                {net.postReceiptUnlockAt ? formatDate(net.postReceiptUnlockAt) : "the check-in window"}.
+              </p>
             </div>
           ) : null}
 

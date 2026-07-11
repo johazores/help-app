@@ -55,6 +55,7 @@ export default function NewSafetyNetPage() {
   const [addingNew, setAddingNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [newRelationship, setNewRelationship] = useState("");
+  const [newPhone, setNewPhone] = useState("");
   const [savingRecipient, setSavingRecipient] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +99,7 @@ export default function NewSafetyNetPage() {
       const created = await recipientService.create({
         name: newName,
         relationship: newRelationship,
+        phone: newPhone || undefined,
       });
       setRecipients((prev) => [...prev, created]);
       setRecipientId(created.id);
@@ -228,6 +230,17 @@ export default function NewSafetyNetPage() {
                     />
                   )}
                 </Field>
+                <Field label="Their mobile number (optional)" hint="So they can find their link again if they lose their phone.">
+                  {(id) => (
+                    <Input
+                      id={id}
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      placeholder="09XX XXX XXXX"
+                      inputMode="tel"
+                    />
+                  )}
+                </Field>
                 <div className="flex gap-3">
                   <Button size="md" loading={savingRecipient} onClick={saveRecipient}>
                     Save
@@ -304,13 +317,21 @@ export default function NewSafetyNetPage() {
           </div>
         </section>
 
-        {/* Backup beneficiary — if the receiver can't keep checking in after receipt */}
+        {/* Backup beneficiary — if the receiver passes away after receiving */}
         <section>
-          <h2 className="text-[19px] font-bold text-ink">What if they can&rsquo;t keep it?</h2>
+          <h2 className="text-[19px] font-bold text-ink">What if they pass away after receiving?</h2>
           <p className="mt-1 hint">
-            Optional: name someone else who can receive this money if {recipientName || "your loved one"}{" "}
-            receives it but later can&rsquo;t check in — for example, if they pass away.
+            Once {recipientName || "your loved one"} receives this money, Sagip can keep protecting it. Name
+            someone else — a sibling, spouse, or child — who should receive it if {recipientName || "they"}{" "}
+            can no longer check in, including if they pass away.
           </p>
+          {!useBackup && backupChoices.length > 0 ? (
+            <p className="mt-3 rounded-xl border border-marigold/40 bg-marigold/10 px-4 py-3 text-[14px] leading-relaxed text-body">
+              <span className="font-semibold text-ink">Without a backup,</span> if {recipientName} receives
+              this and later passes away, the money stays in their account with no automatic next step in
+              Sagip.
+            </p>
+          ) : null}
           <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-4">
             <input
               type="checkbox"
@@ -326,7 +347,8 @@ export default function NewSafetyNetPage() {
             <span>
               <span className="block text-[17px] font-semibold text-ink">Add a backup person</span>
               <span className="block text-[15px] text-subtle">
-                Same safety-net idea, one step further — enforced on Stellar, not by us.
+                If {recipientName || "they"} can&rsquo;t check in after receiving — including if they pass
+                away — this person receives next. Enforced on Stellar.
               </span>
             </span>
           </label>

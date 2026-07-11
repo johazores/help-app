@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -149,8 +150,11 @@ export default function ClaimPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-paper">
-      <header className="container-page flex h-16 items-center">
+      <header className="container-page flex h-16 items-center justify-between">
         <Logo />
+        <Link href="/claim/recover" className="text-[14px] font-semibold text-subtle hover:text-ink">
+          Lost your link?
+        </Link>
       </header>
 
       <div className="container-page flex flex-1 items-start justify-center py-6 sm:items-center sm:py-10">
@@ -237,7 +241,7 @@ export default function ClaimPage() {
                 </Button>
                 <p className="mt-3 text-[14px] leading-relaxed text-subtle">
                   {info.hasBackup && info.backupName
-                    ? `This money becomes yours. If you can't check in later, ${info.backupName} can receive it — ${info.fromName} set that up for you.`
+                    ? `After you receive, you'll need to check in on this link now and then. If you pass away or can't, ${info.backupName} receives it next — ${info.fromName} set that up for you.`
                     : "Tapping Receive makes this money yours, kept safe here in Sagip under your name."}
                 </p>
               </div>
@@ -263,7 +267,8 @@ export default function ClaimPage() {
                 <div className="mt-6 rounded-xl bg-sage/10 p-5 text-left text-[15px] leading-relaxed text-body">
                   <p className="font-semibold text-ink">Tap &ldquo;I&rsquo;m okay&rdquo; now and then</p>
                   <p className="mt-2">
-                    Each check-in keeps this money in your hands. If you ever can&rsquo;t check in
+                    Each check-in keeps this money in your hands. If you pass away or ever can&rsquo;t check
+                    in
                     {info.guardUnlockAt ? (
                       <>
                         {" "}
@@ -274,8 +279,8 @@ export default function ClaimPage() {
                     {info.backupName ? (
                       <>
                         {" "}
-                        — <span className="font-semibold text-ink">{info.backupName}</span> can receive
-                        it for you.
+                        — <span className="font-semibold text-ink">{info.backupName}</span> will receive
+                        it instead.
                       </>
                     ) : null}
                   </p>
@@ -295,14 +300,21 @@ export default function ClaimPage() {
                     {error}
                   </p>
                 ) : null}
+                <p className="mt-4 text-[14px] text-subtle">
+                  Save this link somewhere safe. If you lose your phone, use{" "}
+                  <Link href="/claim/recover" className="font-semibold text-ink underline">
+                    Find your link
+                  </Link>{" "}
+                  or ask {info.fromName} to send it again.
+                </p>
               </div>
 
               {info.backupName && info.guardIsOpen ? (
                 <div className="card mt-4 overflow-hidden p-6 text-center">
                   <h2 className="text-[18px] font-bold text-ink">For {info.backupName}</h2>
                   <p className="mt-2 text-[15px] leading-relaxed text-body">
-                    {info.forName} hasn&rsquo;t checked in. If you&rsquo;re {info.backupName}, you
-                    can receive this money now.
+                    {info.forName} hasn&rsquo;t checked in — this may mean they passed away or can no longer
+                    act. If you&rsquo;re {info.backupName}, you can receive this money now.
                   </p>
                   <div className="mt-4">
                     <Button fullWidth loading={backupClaiming} onClick={backupReceive}>
