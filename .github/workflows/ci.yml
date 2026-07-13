@@ -57,9 +57,9 @@ jobs:
           APP_ENCRYPTION_KEY: dGVzdC1lbmMtZGVjcnlwdGlvbi1rZXktMzJieXRlcw==
           SKIP_TREASURY: "1"
         run: |
-          npx next start -p 3001 &
+          npx next start -p 8001 &
           sleep 8
-          curl -sf http://localhost:3001/api/health | grep -q '"ok":true'
+          curl -sf http://localhost:8001/api/health | grep -q '"ok":true'
 
   e2e:
     runs-on: ubuntu-latest

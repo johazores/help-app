@@ -1,36 +1,129 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sagip — Server (`server-backend`)
 
-## Getting Started
+Next.js **16** Pages Router **API** + **Prisma** + **Stellar SDK**. Runs on **port 8001**.
+All domain logic lives in `server/services/`; HTTP handlers in `pages/api/` stay thin.
 
-First, run the development server:
+See the [root README](../README.md) for product context, Stellar mechanics, and full setup.
+
+## Stack
+
+| Layer | Choice |
+|-------|--------|
+| Framework | Next.js 16 (Pages Router API, Turbopack) |
+| Database | PostgreSQL via Prisma 6 |
+| Blockchain | `@stellar/stellar-sdk` — claimable balances on testnet |
+| Auth | Hand-rolled HS256 JWT + live session rows |
+| Email | Nodemailer (SMTP settings seeded from env) |
+
+## Development
+
+From the **repo root** (recommended):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp server-backend/.env.example server-backend/.env
+npm run setup              # migrate + generate + seed
+npm run dev                # client :8000 + server :8001
+npm run dev:server         # this workspace only
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+From this directory:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev                # next dev -p 8001
+npm run build              # clean-stale + prisma generate + next build
+npm run start
+npm run lint               # eslint .
+npm run typecheck
+npm run prisma:migrate     # prisma migrate dev
+npm run db:seed
+npm run e2e                # Stellar testnet fund → set aside → claim
+npm run setup              # migrate deploy + generate + seed
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Project layout
 
-## Learn More
+```
+pages/api/           HTTP endpoints (thin handlers)
+server/services/     Domain logic (stellar, safety nets, users, …)
+lib/                 Infra: prisma, jwt, crypto, api guard (requireUser)
+prisma/              Schema, migrations, seed
+scripts/             e2e-test.ts, clean-stale.js
+```
 
-To learn more about Next.js, take a look at the following resources:
+## API handler pattern
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Handlers use `handler()` from `@/lib/api`, validate methods with `allowMethods`, and
+delegate to services:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```typescript
+export default handler(async (req, res) => {
+  if (!allowMethods(req, res, ["GET", "POST"])) return;
+  const user = await requireUser(req);
+  // … call service, return JSON
+});
+```
 
-## Deploy on Vercel
+Throw `ApiError(status, message)` from services for clean HTTP errors.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Key endpoints
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Path | Purpose |
+|------|---------|
+| `GET /api/health` | DB + Stellar config smoke test (CI/monitoring) |
+| `POST /api/cron/reminders` | Check-in email reminders (`Bearer $CRON_SECRET`) |
+| `/api/auth/*` | Sign-up, sign-in, sessions, PIN reset |
+| `/api/safety-nets/*` | Core safety-net CRUD, check-in, split |
+| `/api/claim/[code]/*` | Family claim flow (no user auth) |
+| `/api/admin/*` | Separate admin identity + overview |
+
+Full route list: run `npm run build` and inspect the Pages Router output.
+
+## Environment variables
+
+Create `server-backend/.env`:
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `AUTH_TOKEN_SECRET` | Yes | HS256 signing key (≥32 chars) |
+| `APP_ENCRYPTION_KEY` | Yes | 32-byte key, base64 — encrypts Stellar secrets at rest |
+| `ADMIN_USERNAME` | Seed | Admin bootstrap username |
+| `ADMIN_EMAIL` | Seed | Admin bootstrap email |
+| `ADMIN_PASSWORD` | Seed | Admin bootstrap password |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Optional | Email (PIN reset, check-in reminders) |
+| `CRON_SECRET` | Production | Protects `POST /api/cron/reminders` |
+| `SKIP_TREASURY` | CI/offline | Set `1` to skip USDC treasury bootstrap in seed |
+
+Generate secrets:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"  # AUTH_TOKEN_SECRET
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"     # APP_ENCRYPTION_KEY
+```
+
+Network settings (Horizon URL, USDC issuer, held asset) are seeded into the `Setting`
+table — not hard-coded in source.
+
+## Stellar & testing
+
+- **Testnet only** in current build — real txs on Stellar testnet, no mainnet money.
+- Safety nets use **USDC** as the held asset; XLM covers fees only.
+- **`npm run e2e`** — funds sender/recipient via Friendbot, creates claimable balance,
+  claims it, asserts balances on-chain.
+- Use `SKIP_TREASURY=1` when seeding without network access (CI).
+
+## CI
+
+Root workflow (`.github/workflows/ci.yml`): migrate + seed → typecheck → lint → build →
+health smoke test. E2e runs on push to main/master.
+
+Reminders cron (`.github/workflows/reminders-cron.yml`): needs repo `API_URL` + `CRON_SECRET`.
+
+## Related docs
+
+- [Root README](../README.md) — architecture, demo, production path
+- [docs/FUNDING.md](../docs/FUNDING.md) — USDC, reminders, CI, admin KPIs
+- [docs/PRODUCTION.md](../docs/PRODUCTION.md) — path to production
+- [docs/SUCCESSION.md](../docs/SUCCESSION.md) — backup beneficiary flow
+- [AGENTS.md](./AGENTS.md) — AI/agent coding rules for this workspace

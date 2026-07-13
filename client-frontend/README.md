@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sagip — Client (`client-frontend`)
 
-## Getting Started
+Next.js **16** App Router UI for Sagip. Runs on **port 8000** and talks to the backend
+through relative `/api/...` paths — never call `localhost:8001` from browser code.
 
-First, run the development server:
+See the [root README](../README.md) for product context, Stellar mechanics, and full setup.
+
+## Stack
+
+| Layer | Choice |
+|-------|--------|
+| Framework | Next.js 16 (App Router, Turbopack) |
+| UI | React 19, Tailwind CSS 3 |
+| API access | `services/*` → `/api/*` (proxied to backend) |
+| Proxy | `proxy.ts` (Next.js 16 — replaces `middleware.ts` + config rewrites) |
+
+## Development
+
+From the **repo root** (recommended):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev              # client :8000 + server :8001
+npm run dev:client       # this workspace only
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+From this directory:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev              # next dev -p 8000
+npm run build
+npm run start
+npm run lint             # eslint . (next lint removed in Next 16)
+npm run typecheck
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open http://localhost:8000. The API at http://localhost:8001 is proxied automatically.
 
-## Learn More
+## API proxy (`proxy.ts`)
 
-To learn more about Next.js, take a look at the following resources:
+Browser code uses `fetch("/api/...")` via `services/api-client.ts`. At runtime,
+`proxy.ts` rewrites those requests to the backend:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Dev default:** `http://localhost:8001`
+- **Production:** set `API_URL` to your backend origin (e.g. `https://api.example.com`)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Do **not** add `/api` rewrites in `next.config.ts` — that duplicates the proxy.
 
-## Deploy on Vercel
+## Project layout
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+app/              App Router pages (auth, home, claim, admin, …)
+components/       Reusable UI (app-shell, balance-card, ui/*)
+services/         Client-side API service classes (one per domain)
+lib/format.ts     Display helpers (money, countdown, dates)
+proxy.ts          Rewrites /api/* → backend (API_URL)
+next.config.ts    Security headers, turbopack root, monorepo tracing
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Conventions
+
+- **No blockchain jargon** in user-facing copy (no “wallet seed”, “Stellar”, “XLM” in UI).
+- **Service classes only** for HTTP — pages/components call `authService`, `safetyNetService`, etc.
+- **Client components** (`"use client"`) for interactive pages; keep server components where possible.
+- **Auth tokens** live in `localStorage` (`sagip.token`, `sagip.admin.token`) via `api-client.ts`.
+- **Path alias:** `@/*` maps to this workspace root.
+
+## Environment
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `API_URL` | Production | Backend origin for `proxy.ts` (omit locally — defaults to `:8001`) |
+
+All secrets (`DATABASE_URL`, `AUTH_TOKEN_SECRET`, Stellar keys, SMTP, …) belong in
+`server-backend/.env`, not here.
+
+## Related docs
+
+- [Root README](../README.md) — architecture, setup, demo script
+- [docs/DEMO.md](../docs/DEMO.md) — live pitch walkthrough
+- [docs/ONBOARDING.md](../docs/ONBOARDING.md) — user-facing guide
+- [AGENTS.md](./AGENTS.md) — AI/agent coding rules for this workspace

@@ -5,7 +5,7 @@ export default function ApiHome() {
       <p>Backend service for Sagip. All endpoints live under <code>/api/*</code>.</p>
       <p>
         In development, the client at{" "}
-        <a href="http://localhost:3000">localhost:3000</a> proxies API calls here.
+        <a href="http://localhost:8000">localhost:8000</a> proxies API calls here.
       </p>
     </main>
   );

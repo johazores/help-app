@@ -111,10 +111,10 @@ touch the database.
   flow: send-now gifts, scheduled gifts ("opens on a date"), tuition plans that open in parts,
   split safety nets across several loved ones, savings goals with progress bars, an abuloy
   preset, a printable QR claim card for each net/gift, an emergency "ask to open it now"
-  request the sender approves or dismisses, check-in streaks, and **backup beneficiaries**
-  (post-receipt succession if the primary receiver can't keep checking in). Paluwagan is shown as an
-  honest coming-soon (it needs multi-user coordination). All of it reuses the same
-  claimable-balance machinery — gifts are nets with an open date and no check-in.
+  request the sender approves or dismisses, check-in streaks, **backup beneficiaries**
+  (post-receipt succession if the primary receiver can't keep checking in), and a **Paluwagan**
+  MVP (invite-only savings circle). All of it reuses the same claimable-balance machinery —
+  gifts are nets with an open date and no check-in.
 - **Account management.** Users get a full account area: profile + photo, add/change email
   with 6-digit verification codes, change PIN (signs out other devices), forgot-PIN recovery
   via verified email, and multi-device session management with revocation. Email delivery
@@ -128,9 +128,23 @@ touch the database.
   aside, receives it, and asserts balances + fees on-chain — proof the flow really works.
 
 See **[docs/FUNDING.md](./docs/FUNDING.md)** for funding-sprint improvements (USDC, reminders,
-CI, admin KPIs), **[PRODUCTION.md](./PRODUCTION.md)** for the full path-to-production plan (the biggest
+CI, admin KPIs), **[docs/PRODUCTION.md](./docs/PRODUCTION.md)** for the full path-to-production plan (the biggest
 items: hold **USDC** instead of XLM for stability, and integrate a **SEP-24 anchor** for real
 PHP deposit/cash-out).
+
+## Tech stack
+
+| Layer | Choice |
+|-------|--------|
+| Monorepo | npm workspaces (`client-frontend` + `server-backend`) |
+| Frontend | Next.js **16** (App Router), React **19**, Tailwind CSS 3 |
+| Backend | Next.js **16** (Pages Router API), Prisma **6**, PostgreSQL |
+| Blockchain | Stellar SDK — claimable balances on **testnet**, held asset **USDC** |
+| Auth | Hand-rolled HS256 JWT + revocable sessions |
+| Lint | ESLint 9 flat config (`eslint .` — `next lint` removed in Next 16) |
+| CI | GitHub Actions — typecheck, lint, build, health smoke test, optional e2e |
+
+Requires **Node 20.9+**.
 
 ## Architecture
 
@@ -138,11 +152,15 @@ This repo is an **npm workspaces monorepo** with two apps:
 
 | App | Port | Role |
 |-----|------|------|
-| `client-frontend` | 3000 | Next.js App Router UI |
-| `server-backend` | 3001 | Next.js Pages Router API + Prisma + Stellar |
+| `client-frontend` | 8000 | Next.js App Router UI |
+| `server-backend` | 8001 | Next.js Pages Router API + Prisma + Stellar |
 
-The client proxies `/api/*` to the backend via Next.js 16 **`proxy.ts`** (via `API_URL`), so the
+The client proxies `/api/*` to the backend via Next.js 16 **`proxy.ts`** (reads `API_URL`), so the
 browser still calls relative `/api/...` paths — no CORS headaches during development.
+
+Each workspace has its own **[client-frontend/README.md](./client-frontend/README.md)** and
+**[server-backend/README.md](./server-backend/README.md)**. AI coding rules live in each workspace's
+**`AGENTS.md`** / **`CLAUDE.md`**.
 
 - **Simple, hand-rolled HS256 JWT** auth — tokens travel in the `Authorization` header.
 - **Prisma + PostgreSQL** for persistence (lives in `server-backend/`).
@@ -155,6 +173,7 @@ client-frontend/
   app/                 App Router pages
   components/          Reusable UI
   services/            client-side API service classes
+  proxy.ts             /api/* → server-backend (API_URL)
   lib/format.ts        display helpers
 
 server-backend/
@@ -166,7 +185,7 @@ server-backend/
 
 ## Setup
 
-Requires Node 20.9+ and a PostgreSQL database.
+Requires Node **20.9+** and a PostgreSQL database.
 
 ```bash
 # 1. Install (root installs both workspaces)
@@ -177,6 +196,10 @@ cp server-backend/.env.example server-backend/.env
 #   DATABASE_URL         your Postgres connection string
 #   AUTH_TOKEN_SECRET    node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 #   APP_ENCRYPTION_KEY   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+#   ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD   optional — bootstraps /admin sign-in on seed
+#   SMTP_*               optional — email (PIN reset, check-in reminders)
+#   CRON_SECRET          optional — protects POST /api/cron/reminders
+#   SKIP_TREASURY=1      optional — skip USDC treasury bootstrap (CI / offline)
 
 # 3. Create the schema and seed Stellar network config
 npm run setup
@@ -185,7 +208,25 @@ npm run setup
 npm run dev
 ```
 
-Open http://localhost:3000 (UI). The API runs at http://localhost:3001 and is proxied automatically.
+Open http://localhost:8000 (UI). The API runs at http://localhost:8001 and is proxied via `proxy.ts`.
+
+### Development commands (repo root)
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Client `:8000` + server `:8001` |
+| `npm run dev:client` / `dev:server` | One workspace only |
+| `npm run build` | Production build (server first, then client) |
+| `npm run typecheck` | TypeScript both workspaces |
+| `npm run lint` | ESLint both workspaces |
+| `npm run setup` | Migrate + generate + seed backend |
+| `npm run e2e` | Stellar testnet integration test |
+
+### Production deploy notes
+
+- Set **`API_URL`** on the client deployment to the public backend origin.
+- Backend needs `DATABASE_URL`, `AUTH_TOKEN_SECRET`, `APP_ENCRYPTION_KEY`, and SMTP/CRON vars as needed.
+- Schedule **`POST /api/cron/reminders`** hourly with `Authorization: Bearer $CRON_SECRET` (see `.github/workflows/reminders-cron.yml`).
 
 ## A 3-minute demo script
 
@@ -194,9 +235,9 @@ The app has a **built-in demo mode**: when you create a safety net, choose
 set aside → check in → lapse → family receives — into a couple of minutes so you can show
 it live. No code changes needed.
 
-See **[DEMO.md](./DEMO.md)** for a full word-for-word script with timing and talking points,
+See **[docs/DEMO.md](./docs/DEMO.md)** for a full word-for-word script with timing and talking points,
 **[docs/SUCCESSION.md](./docs/SUCCESSION.md)** for the backup-beneficiary flow (including the VC
-"what if the receiver dies?" scenario), and **[ONBOARDING.md](./ONBOARDING.md)** for the plain-language “how to use the app” guide
+"what if the receiver dies?" scenario), and **[docs/ONBOARDING.md](./docs/ONBOARDING.md)** for the plain-language “how to use the app” guide
 (the same walkthrough is available in-app under **How it works**).
 
 ## What I deliberately left out

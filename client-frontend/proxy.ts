@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const apiOrigin = (process.env.API_URL ?? "http://localhost:3001").replace(/\/$/, "");
+const apiOrigin = (process.env.API_URL ?? "http://localhost:8001").replace(/\/$/, "");
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
