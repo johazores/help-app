@@ -1,17 +1,15 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./pages/**/*.{ts,tsx}"],
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        // Deep, watchful teal — the dominant surface.
         ink: {
           DEFAULT: "#0C3B3A",
           soft: "#0F4645",
           muted: "#10504E",
         },
-        // Warm marigold — the human "still here / received" accent. Used sparingly.
         marigold: {
           DEFAULT: "#EBA13B",
           deep: "#C9812A",

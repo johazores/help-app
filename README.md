@@ -132,26 +132,34 @@ PHP deposit/cash-out).
 
 ## Architecture
 
-- **Next.js App Router** renders every page (`src/app/**`).
-- **Pages Router** is used **only** for API endpoints (`pages/api/**`). App Router (`app/`)
-  and Pages Router (`pages/`) both live at the project root — the standard Next.js layout.
-- **Simple, hand-rolled HS256 JWT** auth (`src/lib/jwt.ts`) — no auth library. Tokens
-  travel in the `Authorization` header, which behaves identically on mobile web and PWAs.
-- **Prisma + PostgreSQL** for persistence.
-- **Service classes everywhere.** Server domain logic lives in `src/server/services/**`;
-  all client-side API calls live in `src/services/**`. No `fetch` calls scattered in pages.
-- **Config & credentials in the database** (`Setting` table), not hard-coded. Only two
-  true secrets stay in env: the token signing key and the 32-byte encryption key.
-- **kebab-case** files and folders throughout.
+This repo is an **npm workspaces monorepo** with two apps:
+
+| App | Port | Role |
+|-----|------|------|
+| `client-frontend` | 3000 | Next.js App Router UI |
+| `server-backend` | 3001 | Next.js Pages Router API + Prisma + Stellar |
+
+The client proxies `/api/*` to the backend in dev and production (via `API_URL`), so the
+browser still calls relative `/api/...` paths — no CORS headaches during development.
+
+- **Simple, hand-rolled HS256 JWT** auth — tokens travel in the `Authorization` header.
+- **Prisma + PostgreSQL** for persistence (lives in `server-backend/`).
+- **Service classes everywhere.** Server domain logic in `server-backend/server/services/**`;
+  client-side API calls in `client-frontend/services/**`.
+- **Config & credentials in the database** (`Setting` table), not hard-coded.
 
 ```
-app/                   App Router pages (landing, auth, dashboard, detail, claim, welcome)
-components/             Reusable UI (ui/* primitives + composites)
-lib/                   prisma, jwt, crypto, api guard, formatting
-server/services/       settings, stellar, user, recipient, safety-net
-services/              client-side API service classes
-pages/api/             HTTP endpoints only (Pages Router)
-prisma/                schema + seed
+client-frontend/
+  app/                 App Router pages
+  components/          Reusable UI
+  services/            client-side API service classes
+  lib/format.ts        display helpers
+
+server-backend/
+  pages/api/           HTTP endpoints (Pages Router)
+  server/services/     domain logic (stellar, users, safety nets, …)
+  lib/                 prisma, jwt, crypto, api guard
+  prisma/              schema + seed
 ```
 
 ## Setup
@@ -159,24 +167,23 @@ prisma/                schema + seed
 Requires Node 18+ and a PostgreSQL database.
 
 ```bash
-# 1. Install
+# 1. Install (root installs both workspaces)
 npm install
 
-# 2. Configure — copy the example and fill in the three values
-cp .env.example .env
+# 2. Configure the backend
+cp server-backend/.env.example server-backend/.env
 #   DATABASE_URL         your Postgres connection string
 #   AUTH_TOKEN_SECRET    node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 #   APP_ENCRYPTION_KEY   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 # 3. Create the schema and seed Stellar network config
-npx prisma migrate dev --name init
-npm run db:seed
+npm run setup
 
-# 4. Run
+# 4. Run both apps
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000 (UI). The API runs at http://localhost:3001 and is proxied automatically.
 
 ## A 3-minute demo script
 
