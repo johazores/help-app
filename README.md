@@ -78,8 +78,9 @@ each loved one (via Friendbot) so non-technical, elderly family members can rece
 money without managing anything. Secrets are encrypted with **AES-256-GCM** before they
 touch the database.
 
-> Under the hood this runs on **Stellar testnet** and uses test XLM as stand-in “money.”
-> The UI keeps amounts as plain numbers and never shows technical units.
+> Under the hood this runs on **Stellar testnet** and holds **USDC** (stable value) for
+> safety nets, with test XLM only for network fees. The UI keeps amounts as plain numbers
+> and never shows technical units.
 
 ## Testnet, real transactions & the admin panel
 
@@ -126,7 +127,8 @@ touch the database.
 - **End-to-end test.** `npm run e2e` funds a sender and recipient on testnet, sets money
   aside, receives it, and asserts balances + fees on-chain — proof the flow really works.
 
-See **[PRODUCTION.md](./PRODUCTION.md)** for the full path-to-production plan (the biggest
+See **[docs/FUNDING.md](./docs/FUNDING.md)** for funding-sprint improvements (USDC, reminders,
+CI, admin KPIs), **[PRODUCTION.md](./PRODUCTION.md)** for the full path-to-production plan (the biggest
 items: hold **USDC** instead of XLM for stability, and integrate a **SEP-24 anchor** for real
 PHP deposit/cash-out).
 

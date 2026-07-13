@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/api";
 import { stellarService } from "@/server/services/stellar-service";
 import { recipientService } from "@/server/services/recipient-service";
 import { walletService } from "@/server/services/wallet-service";
+import { settingsService } from "@/server/services/settings-service";
 
 const MINUTE_MS = 60 * 1000;
 const CHECK_IN_INTERVALS = [1, 10080, 43200, 129600];
@@ -156,6 +157,7 @@ class SafetyNetService {
       unlockAt = new Date(Date.now() + interval * MINUTE_MS);
     }
     const amountStr = amount.toFixed(7);
+    const { heldAsset } = await settingsService.asset();
 
     const { balanceId, txHash } = await stellarService.openSafetyNet({
       ownerAccountId: wallet.stellarAccount.id,
@@ -179,6 +181,7 @@ class SafetyNetService {
         kind,
         label,
         amount: amountStr,
+        asset: heldAsset,
         balanceId,
         checkInIntervalMinutes: interval,
         unlockAt,

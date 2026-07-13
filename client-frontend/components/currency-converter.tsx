@@ -5,37 +5,41 @@ import { ratesService } from "@/services/rates-service";
 import { CURRENCIES, formatFiat } from "@/lib/format";
 import type { Rates } from "@/services/types";
 
-// Selectable units: your funds (XLM) plus the fiat currencies we track.
-const UNITS: { code: string; label: string }[] = [
-  { code: "XLM", label: "Stellar (your funds)" },
-  ...CURRENCIES.map((c) => ({ code: c.code, label: `${c.code} — ${c.label}` })),
-];
+// Selectable units: your funds plus the fiat currencies we track.
+const HELD_LABEL: Record<string, string> = {
+  USDC: "Your funds (USDC)",
+  XLM: "Stellar (your funds)",
+};
 
-/** Everything is converted through XLM, since rates are “fiat per 1 XLM”. */
-function toXlm(amount: number, code: string, rates: Record<string, number>): number {
-  if (code === "XLM") return amount;
+function heldUnit(base: string): { code: string; label: string } {
+  return { code: base, label: HELD_LABEL[base] ?? "Your funds" };
+}
+
+/** Convert through the held asset base (USDC ≈ 1 USD, or XLM). */
+function toHeld(amount: number, code: string, base: string, rates: Record<string, number>): number {
+  if (code === base) return amount;
   const r = rates[code];
   return r ? amount / r : 0;
 }
-function fromXlm(xlm: number, code: string, rates: Record<string, number>): number {
-  if (code === "XLM") return xlm;
+function fromHeld(held: number, code: string, base: string, rates: Record<string, number>): number {
+  if (code === base) return held;
   const r = rates[code];
-  return r ? xlm * r : 0;
+  return r ? held * r : 0;
 }
-function convert(amount: number, from: string, to: string, rates: Record<string, number>): number {
-  return fromXlm(toXlm(amount, from, rates), to, rates);
+function convert(amount: number, from: string, to: string, base: string, rates: Record<string, number>): number {
+  return fromHeld(toHeld(amount, from, base, rates), to, base, rates);
 }
 
-function formatUnit(value: number, code: string): string {
+function formatUnit(value: number, code: string, base: string): string {
   if (!Number.isFinite(value)) return "—";
-  if (code === "XLM") {
-    return `${value.toLocaleString("en-US", { maximumFractionDigits: 4 })} XLM`;
+  if (code === base) {
+    return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
   }
   return formatFiat(value, code);
 }
 
 export function CurrencyConverter({
-  defaultFrom = "XLM",
+  defaultFrom = "USDC",
   defaultTo = "PHP",
   defaultAmount = "100",
 }: {
@@ -75,15 +79,18 @@ export function CurrencyConverter({
     };
   }, []);
 
-  // Only offer currencies we actually have a rate for (XLM is always available).
+  // Only offer currencies we actually have a rate for (held asset is always available).
   const available = useMemo(() => {
-    if (!rates) return UNITS;
-    return UNITS.filter((u) => u.code === "XLM" || rates.rates[u.code] !== undefined);
+    const base = rates?.base ?? "USDC";
+    const units = [heldUnit(base), ...CURRENCIES.map((c) => ({ code: c.code, label: `${c.code} — ${c.label}` }))];
+    if (!rates) return units;
+    return units.filter((u) => u.code === base || rates.rates[u.code] !== undefined);
   }, [rates]);
 
+  const base = rates?.base ?? "USDC";
   const numeric = Number(amount) || 0;
-  const result = rates ? convert(numeric, from, to, rates.rates) : 0;
-  const perOne = rates ? convert(1, from, to, rates.rates) : 0;
+  const result = rates ? convert(numeric, from, to, base, rates.rates) : 0;
+  const perOne = rates ? convert(1, from, to, base, rates.rates) : 0;
 
   function swap() {
     setFrom(to);
@@ -152,7 +159,7 @@ export function CurrencyConverter({
             <label className="field-label">Converts to</label>
             <div className="flex gap-3">
               <div className="flex h-14 w-full items-center rounded-xl border border-line bg-paper px-4 text-[19px] font-bold text-ink">
-                {rates ? formatUnit(result, to) : "…"}
+                {rates ? formatUnit(result, to, base) : "…"}
               </div>
               <select
                 value={to}
@@ -171,7 +178,7 @@ export function CurrencyConverter({
 
           {rates ? (
             <p className="mt-3 text-[14px] text-subtle">
-              1 {from} = {formatUnit(perOne, to)} · updates every minute
+              1 {from} = {formatUnit(perOne, to, base)} · updates every minute
             </p>
           ) : null}
 
@@ -179,14 +186,14 @@ export function CurrencyConverter({
           {quickList.length > 0 ? (
             <div className="mt-5 border-t border-line pt-4">
               <p className="text-[13px] font-semibold text-subtle">
-                {formatUnit(numeric, from)} is also
+                {formatUnit(numeric, from, base)} is also
               </p>
               <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {quickList.map((c) => (
                   <div key={c.code} className="rounded-lg bg-paper px-3 py-2">
                     <span className="text-[12px] font-semibold text-subtle">{c.code}</span>
                     <span className="ml-2 text-[15px] font-bold text-ink">
-                      {formatFiat(convert(numeric, from, c.code, rates!.rates), c.code)}
+                      {formatFiat(convert(numeric, from, c.code, base, rates!.rates), c.code)}
                     </span>
                   </div>
                 ))}

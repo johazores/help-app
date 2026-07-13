@@ -1,11 +1,12 @@
 "use client";
 
+import { memo } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { countdown, formatMoney, statusLabel, windowProgress } from "@/lib/format";
 import type { SafetyNet } from "@/services/types";
 
-export function SafetyNetCard({ net }: { net: SafetyNet }) {
+export const SafetyNetCard = memo(function SafetyNetCard({ net }: { net: SafetyNet }) {
   const progress = windowProgress(net.lastCheckInAt, net.unlockAt);
   const { text } = countdown(net.unlockAt);
   const open = net.status === "ACTIVE" && Date.parse(net.unlockAt) <= Date.now();
@@ -69,4 +70,4 @@ export function SafetyNetCard({ net }: { net: SafetyNet }) {
       )}
     </Link>
   );
-}
+});

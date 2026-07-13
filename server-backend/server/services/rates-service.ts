@@ -8,8 +8,8 @@ import { settingsService } from "@/server/services/settings-service";
  */
 
 export interface RatesPayload {
-  base: "XLM";
-  rates: Record<string, number>; // e.g. { PHP: 6.1, USD: 0.11, USDC: 0.11, ... }
+  base: "XLM" | "USDC";
+  rates: Record<string, number>;
   fetchedAt: string;
   stale: boolean;
 }
@@ -24,7 +24,11 @@ class RatesService {
       return this.cache.payload;
     }
 
-    const { url, coinId, currencies } = await settingsService.rates();
+    const [{ url, coinId, currencies }, assetCfg] = await Promise.all([
+      settingsService.rates(),
+      settingsService.asset(),
+    ]);
+    const base: "XLM" | "USDC" = assetCfg.heldAsset;
     const query = `${url}?ids=${encodeURIComponent(coinId)}&vs_currencies=${encodeURIComponent(
       currencies.join(","),
     )}`;
@@ -44,7 +48,7 @@ class RatesService {
       if (rates.USD !== undefined) rates.USDC = rates.USD;
 
       const payload: RatesPayload = {
-        base: "XLM",
+        base,
         rates,
         fetchedAt: new Date().toISOString(),
         stale: false,

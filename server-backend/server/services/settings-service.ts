@@ -11,6 +11,15 @@ export interface StellarConfig {
   networkPassphrase: string;
 }
 
+export interface AssetConfig {
+  /** XLM or USDC — the asset safety nets and balances use. */
+  heldAsset: "XLM" | "USDC";
+  usdcCode: string;
+  usdcIssuer: string;
+  /** StellarAccount id for the USDC treasury (testnet bootstrap). */
+  treasuryAccountId: string | null;
+}
+
 export interface ExplorerConfig {
   network: string;
   explorerTxUrl: string;
@@ -59,6 +68,34 @@ class SettingsService {
       this.get("rates.currencies"),
     ]);
     return { url, coinId, currencies: currencies.split(",").map((c) => c.trim()) };
+  }
+
+  private async getOptional(key: string): Promise<string | null> {
+    if (this.cache.has(key)) return this.cache.get(key)!;
+    const row = await prisma.setting.findUnique({ where: { key } });
+    if (!row) return null;
+    this.cache.set(key, row.value);
+    return row.value;
+  }
+
+  async asset(): Promise<AssetConfig> {
+    const [heldAsset, usdcCode, usdcIssuer, treasuryAccountId] = await Promise.all([
+      this.get("stellar.heldAsset"),
+      this.get("stellar.usdcCode"),
+      this.get("stellar.usdcIssuer"),
+      this.getOptional("stellar.treasuryAccountId"),
+    ]);
+    return {
+      heldAsset: heldAsset === "USDC" ? "USDC" : "XLM",
+      usdcCode,
+      usdcIssuer,
+      treasuryAccountId,
+    };
+  }
+
+  /** Bust cached values after seed updates (dev only). */
+  clearCache(): void {
+    this.cache.clear();
   }
 }
 

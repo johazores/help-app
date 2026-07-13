@@ -63,6 +63,9 @@ export function ActivityTimeline({
                   View verified record ↗
                 </a>
               ) : null}
+              {a.txHash ? (
+                <p className="mt-1 text-[12px] text-subtle">Saved permanently — not just in the app.</p>
+              ) : null}
             </div>
           </li>
         );

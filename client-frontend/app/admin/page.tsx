@@ -75,6 +75,8 @@ export default function AdminPage() {
     { label: "People", value: stats.users.toString() },
     { label: "Safety nets", value: stats.safetyNets.toString() },
     { label: "Watching now", value: stats.active.toString() },
+    { label: "Check-ins", value: stats.checkIns.toString() },
+    { label: "Delivered", value: stats.delivered.toString() },
     { label: "Set aside", value: formatMoney(stats.totalSetAside) },
   ];
 
@@ -95,7 +97,7 @@ export default function AdminPage() {
       <p className="mt-2 text-[16px] text-body">Everything happening across Sagip, in one place.</p>
 
       {/* Stats */}
-      <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-3">
         {statCards.map((s) => (
           <div key={s.label} className="card p-5">
             <p className="text-[14px] text-subtle">{s.label}</p>

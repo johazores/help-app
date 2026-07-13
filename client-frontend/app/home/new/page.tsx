@@ -13,7 +13,7 @@ import { recipientService } from "@/services/recipient-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { ratesService } from "@/services/rates-service";
 import {
-  convertFromXlm,
+  convertFromHeld,
   formatFiat,
   formatMoney,
   NETWORK_FEE_XLM,
@@ -174,7 +174,7 @@ export default function NewSafetyNetPage() {
   const backupChoices = recipients.filter((r) => r.id !== recipientId);
   const balanceNum = Number(balance) || 0;
   const balanceAfter = balanceNum - amt;
-  const peso = (v: number) => (phpRate !== null ? `≈ ${formatFiat(convertFromXlm(v, phpRate), "PHP")}` : "");
+  const peso = (v: number) => (phpRate !== null ? `≈ ${formatFiat(convertFromHeld(v, phpRate), "PHP")}` : "");
 
   return (
     <AppShell>
@@ -491,6 +491,10 @@ export default function NewSafetyNetPage() {
             </div>
             <p className="mt-3 text-center text-[13px] text-subtle">
               You can take this money back at any time while it&rsquo;s still yours.
+            </p>
+            <p className="mt-2 rounded-xl bg-sage/10 px-4 py-3 text-center text-[13px] leading-relaxed text-body">
+              When you confirm, the rules are recorded permanently — who receives this and when they can.
+              No one, not even Sagip, can change them afterward.
             </p>
           </div>
         )}

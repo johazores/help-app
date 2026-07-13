@@ -42,34 +42,51 @@ class AdminService {
   async overview() {
     const explorer = await settingsService.explorer();
 
-    const [userCount, netCount, activeCount, receivedCount, users, nets, activity] =
-      await Promise.all([
-        prisma.user.count(),
-        prisma.safetyNet.count(),
-        prisma.safetyNet.count({ where: { status: "ACTIVE" } }),
-        prisma.safetyNet.count({ where: { status: "RECEIVED" } }),
-        prisma.user.findMany({
-          orderBy: { createdAt: "desc" },
-          include: {
-            wallets: { select: { id: true, stellarAccount: { select: { publicKey: true } } } },
-            _count: { select: { safetyNets: true, recipients: true } },
-          },
-        }) as unknown as Promise<UserRow[]>,
-        prisma.safetyNet.findMany({
-          orderBy: { createdAt: "desc" },
-          include: { owner: { select: { name: true } }, recipient: { select: { name: true } } },
-        }) as unknown as Promise<NetRow[]>,
-        prisma.activity.findMany({
-          orderBy: { createdAt: "desc" },
-          take: 200,
-          where: { txHash: { not: null } },
-          include: { safetyNet: { select: { label: true, owner: { select: { name: true } } } } },
-        }) as unknown as Promise<ActivityRow[]>,
-      ]);
+    const [
+      userCount,
+      netCount,
+      activeCount,
+      receivedCount,
+      openedCount,
+      checkInCount,
+      setAsideRows,
+      users,
+      nets,
+      activity,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.safetyNet.count(),
+      prisma.safetyNet.count({ where: { status: "ACTIVE" } }),
+      prisma.safetyNet.count({ where: { status: "RECEIVED" } }),
+      prisma.safetyNet.count({ where: { status: "OPENED" } }),
+      prisma.activity.count({ where: { type: "CHECKED_IN" } }),
+      prisma.safetyNet.findMany({
+        where: { status: { in: ["ACTIVE", "OPENED"] } },
+        select: { amount: true },
+      }),
+      prisma.user.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        include: {
+          wallets: { select: { id: true, stellarAccount: { select: { publicKey: true } } } },
+          _count: { select: { safetyNets: true, recipients: true } },
+        },
+      }) as unknown as Promise<UserRow[]>,
+      prisma.safetyNet.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        include: { owner: { select: { name: true } }, recipient: { select: { name: true } } },
+      }) as unknown as Promise<NetRow[]>,
+      prisma.activity.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 200,
+        where: { txHash: { not: null } },
+        include: { safetyNet: { select: { label: true, owner: { select: { name: true } } } } },
+      }) as unknown as Promise<ActivityRow[]>,
+    ]);
 
-    const totalSetAside = nets
-      .filter((n) => n.status === "ACTIVE" || n.status === "OPENED")
-      .reduce((sum, n) => sum + Number(n.amount), 0);
+    const totalSetAside = setAsideRows.reduce((sum, n) => sum + Number(n.amount), 0);
+    const delivered = receivedCount + openedCount;
 
     return {
       explorer,
@@ -78,6 +95,9 @@ class AdminService {
         safetyNets: netCount,
         active: activeCount,
         received: receivedCount,
+        opened: openedCount,
+        checkIns: checkInCount,
+        delivered,
         totalSetAside: totalSetAside.toString(),
       },
       users: users.map((u) => ({

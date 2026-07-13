@@ -26,6 +26,11 @@ const slides = [
     title: "Your family is always covered",
     body: "If you ever can't check in, the money opens to your loved one on its own. No paperwork, no waiting.",
   },
+  {
+    art: "🎁",
+    title: "Use it every month too",
+    body: "Send gifts, tuition plans, and more — not only for emergencies. Family tools keep everyday sending simple.",
+  },
 ];
 
 export default function WelcomePage() {

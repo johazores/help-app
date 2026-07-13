@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
@@ -11,7 +11,18 @@ import { Button } from "@/components/ui/button";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { ratesService } from "@/services/rates-service";
+import { countdown, windowProgress } from "@/lib/format";
 import type { Profile, Rates, SafetyNet } from "@/services/types";
+
+/** Active safety nets past half their check-in window — needs a nudge. */
+function urgentNets(nets: SafetyNet[]): SafetyNet[] {
+  const now = Date.now();
+  return nets.filter((net) => {
+    if (net.status !== "ACTIVE" || net.kind === "GIFT") return false;
+    if (Date.parse(net.unlockAt) <= now) return false;
+    return windowProgress(net.lastCheckInAt, net.unlockAt) >= 0.5;
+  });
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -42,6 +53,9 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, [router]);
 
+  const reminders = useMemo(() => urgentNets(nets), [nets]);
+  const topReminder = reminders[0];
+
   if (loading) {
     return (
       <AppShell>
@@ -66,6 +80,22 @@ export default function HomePage() {
         ) : null}
       </div>
 
+      {topReminder ? (
+        <Link
+          href={`/home/${topReminder.id}`}
+          className="mt-5 block rounded-2xl border-2 border-marigold/50 bg-marigold/10 p-5 transition-shadow hover:shadow-lift"
+        >
+          <p className="text-[17px] font-bold text-ink">
+            Time to check in for {topReminder.forName}
+          </p>
+          <p className="mt-1 text-[15px] text-body">
+            {topReminder.label} opens to your family in {countdown(topReminder.unlockAt).text} if you
+            don&rsquo;t check in.
+            {reminders.length > 1 ? ` (+${reminders.length - 1} more)` : ""}
+          </p>
+        </Link>
+      ) : null}
+
       <div className="mt-6">
         <BalanceCard balance={profile?.balance ?? "0"} rates={rates} />
       </div>
@@ -80,6 +110,13 @@ export default function HomePage() {
           <Link href="/home/new" className="mt-6 inline-block">
             <Button>Set aside money</Button>
           </Link>
+          <p className="mx-auto mt-6 max-w-md text-[15px] text-subtle">
+            Or send a gift every month from{" "}
+            <Link href="/home/tools/gift" className="font-semibold text-ink underline">
+              Family tools
+            </Link>
+            .
+          </p>
         </div>
       ) : (
         <div className="mt-8 grid gap-5 sm:grid-cols-2">

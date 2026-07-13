@@ -181,6 +181,7 @@ model SafetyNet {
   postReceiptUnlockAt             DateTime?
   postReceiptLastCheckInAt        DateTime?
   postReceiptCheckInIntervalMinutes Int?
+  lastReminderAt                    DateTime?
 
   activity Activity[]
 

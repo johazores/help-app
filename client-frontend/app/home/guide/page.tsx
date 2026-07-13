@@ -45,6 +45,14 @@ const faqs = [
     q: "Does my family need to sign up?",
     a: "No. You send them a link. When the money is ready, they open the link and tap one button to receive it.",
   },
+  {
+    q: "Can anyone change the rules after I set money aside?",
+    a: "No. The rules — who receives it and when — are recorded permanently when you confirm. Not even Sagip can redirect the money.",
+  },
+  {
+    q: "What if Sagip shuts down?",
+    a: "Your funds live on Stellar, not on our servers. Export your wallet recovery key anytime from Wallets. Money in an open safety net can still be received by your family using their link.",
+  },
 ];
 
 export default function GuidePage() {

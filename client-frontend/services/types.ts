@@ -36,6 +36,7 @@ export interface AppConfig {
   network: string;
   explorerTxUrl: string;
   explorerAccountUrl: string;
+  heldAsset: "XLM" | "USDC";
 }
 
 export interface AdminStats {
@@ -43,6 +44,9 @@ export interface AdminStats {
   safetyNets: number;
   active: number;
   received: number;
+  opened: number;
+  checkIns: number;
+  delivered: number;
   totalSetAside: string;
 }
 
@@ -151,7 +155,7 @@ export interface ClaimInfo {
 }
 
 export interface Rates {
-  base: "XLM";
+  base: "XLM" | "USDC";
   rates: Record<string, number>;
   fetchedAt: string;
   stale: boolean;

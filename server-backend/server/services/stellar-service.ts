@@ -16,14 +16,12 @@ import { settingsService } from "@/server/services/settings-service";
  * The only place that talks to Stellar. Everything is classic-layer:
  * claimable balances + native time predicates. No smart contracts.
  *
- * The "safety net" is a claimable balance with two claimants:
- *   1. the owner  — unconditional  (they can always take the money back /
- *                                    reclaim-and-recreate to "check in")
- *   2. the family — not-before(unlockAt)  (opens only after the check-in lapses)
- *
- * "Checking in" reclaims the balance and recreates it with a later unlock date,
- * atomically, in a single transaction.
+ * Held asset defaults to USDC on testnet (stable savings); XLM is kept only
+ * for network fees. Configure via Setting table (see prisma/seed.ts).
  */
+
+const WELCOME_USDC = "10000.0000000";
+const BALANCE_CACHE_MS = 20_000;
 
 async function server(): Promise<Horizon.Server> {
   const { horizonUrl } = await settingsService.stellar();
@@ -36,6 +34,28 @@ export interface StoredAccount {
 }
 
 class StellarService {
+  private balanceCache = new Map<string, { balance: string; at: number }>();
+
+  /** The asset safety nets and balances use (USDC in production-shaped testnet). */
+  async heldAsset(): Promise<Asset> {
+    const cfg = await settingsService.asset();
+    if (cfg.heldAsset === "USDC") {
+      return new Asset(cfg.usdcCode, cfg.usdcIssuer);
+    }
+    return Asset.native();
+  }
+
+  private async loadKeypair(stellarAccountId: string): Promise<Keypair> {
+    const account = await prisma.stellarAccount.findUnique({ where: { id: stellarAccountId } });
+    if (!account) throw new ApiError(404, "Account not found.");
+    const secret = decryptSecret({
+      cipherText: account.encryptedSecret,
+      iv: account.encryptionIv,
+      tag: account.encryptionTag,
+    });
+    return Keypair.fromSecret(secret);
+  }
+
   /** Creates a keypair, funds it via Friendbot (testnet), and stores it encrypted. */
   async createFundedAccount(): Promise<StoredAccount> {
     const { friendbotUrl } = await settingsService.stellar();
@@ -55,13 +75,13 @@ class StellarService {
         encryptionTag: enc.tag,
       },
     });
+
+    await this.ensureUsdcReady(account.id, account.publicKey);
+    await this.sendWelcomeFunds(account.publicKey);
+
     return { id: account.id, publicKey: account.publicKey };
   }
 
-  /**
-   * Imports a user-provided secret key: validates it, funds the account via
-   * Friendbot if it doesn't exist on the network yet, and stores it encrypted.
-   */
   async importAccount(secretKey: string): Promise<StoredAccount> {
     let keypair: Keypair;
     try {
@@ -77,7 +97,6 @@ class StellarService {
       throw new ApiError(409, "That wallet is already set up in Sagip.");
     }
 
-    // If the account isn't on the network yet, activate it (testnet Friendbot).
     const svr = await server();
     try {
       await svr.loadAccount(keypair.publicKey());
@@ -98,11 +117,75 @@ class StellarService {
         encryptionTag: enc.tag,
       },
     });
+
+    await this.ensureUsdcReady(account.id, account.publicKey);
     return { id: account.id, publicKey: account.publicKey };
   }
 
-  /** A direct payment from one custodial account to a destination address. */
+  /** USDC trustline when the held asset is USDC. */
+  async ensureUsdcReady(stellarAccountId: string, publicKey: string): Promise<void> {
+    const cfg = await settingsService.asset();
+    if (cfg.heldAsset !== "USDC") return;
+
+    const svr = await server();
+    const { networkPassphrase } = await settingsService.stellar();
+    const asset = new Asset(cfg.usdcCode, cfg.usdcIssuer);
+    const acct = await svr.loadAccount(publicKey);
+
+    const hasTrustline = acct.balances.some(
+      (b) =>
+        b.asset_type !== "native" &&
+        "asset_code" in b &&
+        b.asset_code === cfg.usdcCode &&
+        b.asset_issuer === cfg.usdcIssuer,
+    );
+
+    if (!hasTrustline) {
+      const key = await this.loadKeypair(stellarAccountId);
+      const tx = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase })
+        .addOperation(
+          Operation.changeTrust({
+            asset,
+            limit: "922337203685.4775807",
+          }),
+        )
+        .setTimeout(60)
+        .build();
+      tx.sign(key);
+      await this.submit(svr, tx);
+    }
+  }
+
+  /** Initial USDC for new accounts (testnet treasury). */
+  private async sendWelcomeFunds(publicKey: string): Promise<void> {
+    const cfg = await settingsService.asset();
+    if (cfg.heldAsset !== "USDC" || !cfg.treasuryAccountId) return;
+
+    const treasury = await prisma.stellarAccount.findUnique({ where: { id: cfg.treasuryAccountId } });
+    if (!treasury) return;
+
+    try {
+      await this.payFrom({
+        fromAccountId: treasury.id,
+        fromPublicKey: treasury.publicKey,
+        toPublicKey: publicKey,
+        amount: WELCOME_USDC,
+      });
+    } catch (err) {
+      console.warn("Welcome USDC transfer skipped:", err);
+    }
+  }
+
   async pay(params: {
+    fromAccountId: string;
+    fromPublicKey: string;
+    toPublicKey: string;
+    amount: string;
+  }): Promise<{ txHash: string }> {
+    return this.payFrom(params);
+  }
+
+  private async payFrom(params: {
     fromAccountId: string;
     fromPublicKey: string;
     toPublicKey: string;
@@ -110,13 +193,15 @@ class StellarService {
   }): Promise<{ txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const key = await this.keypairFor(params.fromAccountId);
+    const asset = await this.heldAsset();
+    const key = await this.loadKeypair(params.fromAccountId);
     const source = await svr.loadAccount(params.fromPublicKey);
+
     const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
       .addOperation(
         Operation.payment({
           destination: params.toPublicKey,
-          asset: Asset.native(),
+          asset,
           amount: params.amount,
         }),
       )
@@ -125,25 +210,15 @@ class StellarService {
     tx.sign(key);
     const result = await this.submit(svr, tx);
     this.invalidateBalance(params.fromPublicKey);
+    this.invalidateBalance(params.toPublicKey);
     return { txHash: result.hash };
   }
+
   async revealSecret(stellarAccountId: string): Promise<string> {
-    const keypair = await this.keypairFor(stellarAccountId);
+    const keypair = await this.loadKeypair(stellarAccountId);
     return keypair.secret();
   }
 
-  private async keypairFor(stellarAccountId: string): Promise<Keypair> {
-    const account = await prisma.stellarAccount.findUnique({ where: { id: stellarAccountId } });
-    if (!account) throw new ApiError(404, "Account not found.");
-    const secret = decryptSecret({
-      cipherText: account.encryptedSecret,
-      iv: account.encryptionIv,
-      tag: account.encryptionTag,
-    });
-    return Keypair.fromSecret(secret);
-  }
-
-  /** Sets money aside: creates the claimable balance and returns its id + tx hash. */
   async openSafetyNet(params: {
     ownerAccountId: string;
     ownerPublicKey: string;
@@ -153,27 +228,23 @@ class StellarService {
   }): Promise<{ balanceId: string; txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const ownerKey = await this.keypairFor(params.ownerAccountId);
+    const asset = await this.heldAsset();
+    const ownerKey = await this.loadKeypair(params.ownerAccountId);
     const source = await svr.loadAccount(params.ownerPublicKey);
 
     const unlockUnix = Math.floor(params.unlockAt.getTime() / 1000).toString();
     const claimants = [
-      // Owner can reclaim any time (check-in / cancel / take back).
       new Claimant(params.ownerPublicKey, Claimant.predicateUnconditional()),
-      // Family can claim only once the unlock time has passed.
       new Claimant(
         params.recipientPublicKey,
         Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
       ),
     ];
 
-    const tx = new TransactionBuilder(source, {
-      fee: BASE_FEE,
-      networkPassphrase,
-    })
+    const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
       .addOperation(
         Operation.createClaimableBalance({
-          asset: Asset.native(),
+          asset,
           amount: params.amount,
           claimants,
         }),
@@ -187,7 +258,6 @@ class StellarService {
     return { balanceId: tx.getClaimableBalanceId(0), txHash: result.hash };
   }
 
-  /** Check-in: reclaim the current balance and recreate it with a later unlock. */
   async resetSafetyNet(params: {
     ownerAccountId: string;
     ownerPublicKey: string;
@@ -198,7 +268,8 @@ class StellarService {
   }): Promise<{ balanceId: string; txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const ownerKey = await this.keypairFor(params.ownerAccountId);
+    const asset = await this.heldAsset();
+    const ownerKey = await this.loadKeypair(params.ownerAccountId);
     const source = await svr.loadAccount(params.ownerPublicKey);
 
     const unlockUnix = Math.floor(params.newUnlockAt.getTime() / 1000).toString();
@@ -214,7 +285,7 @@ class StellarService {
       .addOperation(Operation.claimClaimableBalance({ balanceId: params.currentBalanceId }))
       .addOperation(
         Operation.createClaimableBalance({
-          asset: Asset.native(),
+          asset,
           amount: params.amount,
           claimants,
         }),
@@ -225,11 +296,9 @@ class StellarService {
     tx.sign(ownerKey);
     const result = await this.submit(svr, tx);
     this.invalidateBalance(params.ownerPublicKey);
-    // The recreate is operation index 1.
     return { balanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
   }
 
-  /** Owner takes the money back (cancel). */
   async reclaimToOwner(params: {
     ownerAccountId: string;
     ownerPublicKey: string;
@@ -242,7 +311,6 @@ class StellarService {
     });
   }
 
-  /** Family receives the money after the net has opened. */
   async claimToRecipient(params: {
     recipientAccountId: string;
     recipientPublicKey: string;
@@ -262,7 +330,7 @@ class StellarService {
   }): Promise<{ txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const key = await this.keypairFor(params.accountId);
+    const key = await this.loadKeypair(params.accountId);
     const source = await svr.loadAccount(params.publicKey);
 
     const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
@@ -276,11 +344,6 @@ class StellarService {
     return { txHash: result.hash };
   }
 
-  /**
-   * Primary receives from the original safety net and immediately sets up a
-   * post-receipt guard: same claimable-balance pattern, but on the receiver's
-   * account — primary unconditional, backup time-locked.
-   */
   async claimWithGuard(params: {
     recipientAccountId: string;
     recipientPublicKey: string;
@@ -291,7 +354,8 @@ class StellarService {
   }): Promise<{ guardBalanceId: string; txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const key = await this.keypairFor(params.recipientAccountId);
+    const asset = await this.heldAsset();
+    const key = await this.loadKeypair(params.recipientAccountId);
     const source = await svr.loadAccount(params.recipientPublicKey);
 
     const unlockUnix = Math.floor(params.guardUnlockAt.getTime() / 1000).toString();
@@ -307,7 +371,7 @@ class StellarService {
       .addOperation(Operation.claimClaimableBalance({ balanceId: params.originalBalanceId }))
       .addOperation(
         Operation.createClaimableBalance({
-          asset: Asset.native(),
+          asset,
           amount: params.amount,
           claimants,
         }),
@@ -321,7 +385,6 @@ class StellarService {
     return { guardBalanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
   }
 
-  /** Primary receiver check-in: reclaim the guard and recreate with a later unlock. */
   async resetGuard(params: {
     recipientAccountId: string;
     recipientPublicKey: string;
@@ -332,7 +395,8 @@ class StellarService {
   }): Promise<{ guardBalanceId: string; txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const key = await this.keypairFor(params.recipientAccountId);
+    const asset = await this.heldAsset();
+    const key = await this.loadKeypair(params.recipientAccountId);
     const source = await svr.loadAccount(params.recipientPublicKey);
 
     const unlockUnix = Math.floor(params.newUnlockAt.getTime() / 1000).toString();
@@ -348,7 +412,7 @@ class StellarService {
       .addOperation(Operation.claimClaimableBalance({ balanceId: params.currentBalanceId }))
       .addOperation(
         Operation.createClaimableBalance({
-          asset: Asset.native(),
+          asset,
           amount: params.amount,
           claimants,
         }),
@@ -362,7 +426,6 @@ class StellarService {
     return { guardBalanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
   }
 
-  /** Backup beneficiary receives after the primary receiver's check-in window lapses. */
   async claimGuardAsBackup(params: {
     backupAccountId: string;
     backupPublicKey: string;
@@ -377,51 +440,71 @@ class StellarService {
     return result;
   }
 
-  private balanceCache = new Map<string, { balance: string; at: number }>();
-  private static BALANCE_CACHE_MS = 20_000;
-
-  /** Spendable XLM balance for display. Cached briefly to avoid repeated Horizon calls. */
+  /** Spendable held-asset balance (USDC or XLM). Cached briefly. */
   async availableBalance(publicKey: string): Promise<string> {
     const hit = this.balanceCache.get(publicKey);
-    if (hit && Date.now() - hit.at < StellarService.BALANCE_CACHE_MS) {
+    if (hit && Date.now() - hit.at < BALANCE_CACHE_MS) {
       return hit.balance;
     }
 
+    const cfg = await settingsService.asset();
     const svr = await server();
     const account = await svr.loadAccount(publicKey);
-    const native = account.balances.find((b) => b.asset_type === "native");
-    const balance = native ? native.balance : "0";
+
+    let balance = "0";
+    if (cfg.heldAsset === "USDC") {
+      const usdc = account.balances.find(
+        (b) =>
+          b.asset_type !== "native" &&
+          "asset_code" in b &&
+          b.asset_code === cfg.usdcCode &&
+          b.asset_issuer === cfg.usdcIssuer,
+      );
+      balance = usdc && "balance" in usdc ? usdc.balance : "0";
+    } else {
+      const native = account.balances.find((b) => b.asset_type === "native");
+      balance = native ? native.balance : "0";
+    }
+
     this.balanceCache.set(publicKey, { balance, at: Date.now() });
     return balance;
   }
 
-  /** Drop cached balance after a transaction that changes funds. */
   invalidateBalance(publicKey: string): void {
     this.balanceCache.delete(publicKey);
   }
 
-  /**
-   * Testnet-only top-up. Creates a fresh Friendbot-funded account and forwards
-   * `amount` XLM to the destination. This reliably works even when the
-   * destination already exists (Friendbot can't re-fund existing accounts).
-   * On mainnet this is replaced by a real on-ramp (see PRODUCTION.md).
-   */
+  /** Testnet top-up in the held asset (USDC from treasury, or XLM via Friendbot relay). */
   async addTestFunds(destinationPublicKey: string, amount: string): Promise<{ txHash: string }> {
+    const cfg = await settingsService.asset();
+
+    if (cfg.heldAsset === "USDC" && cfg.treasuryAccountId) {
+      const treasury = await prisma.stellarAccount.findUnique({ where: { id: cfg.treasuryAccountId } });
+      if (treasury) {
+        return this.payFrom({
+          fromAccountId: treasury.id,
+          fromPublicKey: treasury.publicKey,
+          toPublicKey: destinationPublicKey,
+          amount,
+        });
+      }
+    }
+
     const svr = await server();
     const { friendbotUrl, networkPassphrase } = await settingsService.stellar();
-
     const source = Keypair.random();
     const funded = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(source.publicKey())}`);
     if (!funded.ok) {
       throw new ApiError(502, "Couldn't add test funds right now. Please try again.");
     }
 
+    const asset = await this.heldAsset();
     const sourceAccount = await svr.loadAccount(source.publicKey());
     const tx = new TransactionBuilder(sourceAccount, { fee: BASE_FEE, networkPassphrase })
       .addOperation(
         Operation.payment({
           destination: destinationPublicKey,
-          asset: Asset.native(),
+          asset,
           amount,
         }),
       )

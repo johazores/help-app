@@ -411,6 +411,15 @@ export default function AccountPage() {
               <span className="text-[22px] text-subtle">→</span>
             </div>
           </Link>
+          <Link href="/home/withdraw" className="block">
+            <div className="card flex items-center justify-between p-6 hover:shadow-lift">
+              <div>
+                <p className="text-[17px] font-semibold text-ink">Move to your pocket</p>
+                <p className="text-[15px] text-subtle">GCash, Maya, bank — coming soon</p>
+              </div>
+              <span className="text-[22px] text-subtle">→</span>
+            </div>
+          </Link>
           <Link href="/home/guide" className="block">
             <div className="card flex items-center justify-between p-6 hover:shadow-lift">
               <div>

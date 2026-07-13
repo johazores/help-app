@@ -110,3 +110,31 @@ without her.”*
 > single company or person decides when the money moves; the rules are set the moment you
 > create it and can’t be broken. Simple enough for a grandparent to use, and it solves one
 > of the most real, emotional problems in a country built on overseas work.
+
+---
+
+## Optional add-on: succession (~2 minutes)
+
+Use this when a judge asks *“What if the receiver also dies?”*
+
+1. When creating a safety net, enable **Add a backup person** and pick a sibling or spouse.
+2. Run the normal demo through family **Receive**.
+3. Show the receiver’s screen: **Received — guarded** — they must check in too.
+4. Let the receiver’s timer lapse (use **Every minute** for their check-in interval as well).
+5. Open the **backup’s claim link** — they receive next, with no staff intervention.
+
+💬 *“The same rule that protected the OFW now protects the family — one layer deeper,
+still enforced automatically, still no lawyers.”*
+
+Then open **Admin** → click any transaction hash → show the live Stellar explorer record.
+
+💬 *“Every step is a real on-chain transaction — not our database deciding anything.”*
+
+---
+
+## Optional add-on: monthly use (~30 seconds)
+
+From **Family tools**, tap **Send a gift** → create an immediate or scheduled gift.
+
+💬 *“Families use Sagip every month for birthdays and padala — not only for the worst day.
+The same rails protect them when the worst day comes.”*

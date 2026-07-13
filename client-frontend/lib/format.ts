@@ -84,11 +84,16 @@ export function currencyMeta(code: string): CurrencyMeta {
   return CURRENCIES.find((c) => c.code === code) ?? { code, label: code, symbol: "", locale: "en" };
 }
 
-/** Convert an XLM amount to a fiat currency using a rate (fiat per 1 XLM). */
-export function convertFromXlm(xlm: string | number, rate: number): number {
-  const n = typeof xlm === "string" ? Number(xlm) : xlm;
+/** Convert a held balance to fiat using live rates (works for XLM or USDC base). */
+export function convertFromHeld(amount: string | number, rate: number): number {
+  const n = typeof amount === "string" ? Number(amount) : amount;
   if (!Number.isFinite(n) || !Number.isFinite(rate)) return 0;
   return n * rate;
+}
+
+/** @deprecated Use convertFromHeld — kept for existing call sites. */
+export function convertFromXlm(xlm: string | number, rate: number): number {
+  return convertFromHeld(xlm, rate);
 }
 
 export function formatFiat(amount: number, code: string): string {
