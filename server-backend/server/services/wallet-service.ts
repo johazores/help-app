@@ -37,7 +37,7 @@ class WalletService {
     );
   }
 
-  /** The wallet money actions currently use. */
+  /** The wallet money actions currently use. Ensures USDC trustline when needed. */
   async requireActive(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -47,6 +47,7 @@ class WalletService {
     const active =
       user.wallets.find((w: { id: string }) => w.id === user.activeWalletId) ?? user.wallets[0] ?? null;
     if (!active) throw new ApiError(409, "You don't have a wallet yet. Please set one up first.");
+    await stellarService.ensureUsdcReady(active.stellarAccount.id, active.stellarAccount.publicKey);
     return active;
   }
 

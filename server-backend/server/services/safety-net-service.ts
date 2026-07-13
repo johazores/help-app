@@ -159,6 +159,11 @@ class SafetyNetService {
     const amountStr = amount.toFixed(7);
     const { heldAsset } = await settingsService.asset();
 
+    await stellarService.ensureUsdcReady(
+      recipient.stellarAccount.id,
+      recipient.stellarAccount.publicKey,
+    );
+
     const { balanceId, txHash } = await stellarService.openSafetyNet({
       ownerAccountId: wallet.stellarAccount.id,
       ownerPublicKey: wallet.stellarAccount.publicKey,
@@ -205,6 +210,89 @@ class SafetyNetService {
       include: { recipient: true, backupRecipient: true },
     });
     return present(net);
+  }
+
+  /** Split one amount across several loved ones in a single Stellar transaction. */
+  async createSplit(
+    ownerId: string,
+    input: {
+      label: string;
+      checkInIntervalMinutes: number;
+      splits: Array<{ recipientId: string; amount: string }>;
+    },
+  ) {
+    const label = input.label.trim();
+    if (label.length < 2) throw new ApiError(400, "Please give this a short name.");
+    const interval = Math.round(input.checkInIntervalMinutes) || 43200;
+    if (!CHECK_IN_INTERVALS.includes(interval)) {
+      throw new ApiError(400, "Please choose how often you'll check in.");
+    }
+    if (input.splits.length < 2) {
+      throw new ApiError(400, "Please enter amounts for at least two loved ones.");
+    }
+
+    const wallet = await walletService.requireActive(ownerId);
+    const unlockAt = new Date(Date.now() + interval * MINUTE_MS);
+    const { heldAsset } = await settingsService.asset();
+
+    const resolved = await Promise.all(
+      input.splits.map(async (s) => {
+        const amount = Number(s.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          throw new ApiError(400, "Please enter a valid amount for each person.");
+        }
+        const recipient = await recipientService.requireOwned(ownerId, s.recipientId);
+        await stellarService.ensureUsdcReady(
+          recipient.stellarAccount.id,
+          recipient.stellarAccount.publicKey,
+        );
+        return {
+          recipient,
+          amountStr: amount.toFixed(7),
+        };
+      }),
+    );
+
+    const { balanceIds, txHash } = await stellarService.openSplitSafetyNets({
+      ownerAccountId: wallet.stellarAccount.id,
+      ownerPublicKey: wallet.stellarAccount.publicKey,
+      splits: resolved.map((r) => ({
+        recipientPublicKey: r.recipient.stellarAccount.publicKey,
+        amount: r.amountStr,
+        unlockAt,
+      })),
+    });
+
+    const nets = await prisma.$transaction(
+      resolved.map((r, i) =>
+        prisma.safetyNet.create({
+          data: {
+            ownerId,
+            walletId: wallet.id,
+            recipientId: r.recipient.id,
+            kind: "SAFETY_NET",
+            label: `${label} — ${r.recipient.name}`,
+            amount: r.amountStr,
+            asset: heldAsset,
+            balanceId: balanceIds[i],
+            checkInIntervalMinutes: interval,
+            unlockAt,
+            lastCheckInAt: new Date(),
+            claimCode: makeClaimCode(),
+            activity: {
+              create: {
+                type: ActivityType.CREATED,
+                description: `You set aside ${trimAmount(r.amountStr)} for ${r.recipient.name} (split fund).`,
+                txHash: i === 0 ? txHash : null,
+              },
+            },
+          },
+          include: { recipient: true, backupRecipient: true },
+        }),
+      ),
+    );
+
+    return nets.map(present);
   }
 
   async checkIn(ownerId: string, id: string) {
@@ -411,6 +499,11 @@ class SafetyNetService {
       throw new ApiError(409, "This isn't open yet.");
     }
     if (!net.balanceId) throw new ApiError(409, "This isn't ready yet.");
+
+    await stellarService.ensureUsdcReady(
+      net.recipient.stellarAccount.id,
+      net.recipient.stellarAccount.publicKey,
+    );
 
     const now = new Date();
     const interval = guardInterval(net);

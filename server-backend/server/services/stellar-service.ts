@@ -258,6 +258,55 @@ class StellarService {
     return { balanceId: tx.getClaimableBalanceId(0), txHash: result.hash };
   }
 
+  /** One atomic tx: multiple claimable balances (split safety net). */
+  async openSplitSafetyNets(params: {
+    ownerAccountId: string;
+    ownerPublicKey: string;
+    splits: Array<{
+      recipientPublicKey: string;
+      amount: string;
+      unlockAt: Date;
+    }>;
+  }): Promise<{ balanceIds: string[]; txHash: string }> {
+    if (params.splits.length < 2) {
+      throw new ApiError(400, "A split needs at least two recipients.");
+    }
+
+    const svr = await server();
+    const { networkPassphrase } = await settingsService.stellar();
+    const asset = await this.heldAsset();
+    const ownerKey = await this.loadKeypair(params.ownerAccountId);
+    const source = await svr.loadAccount(params.ownerPublicKey);
+
+    let builder = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase });
+
+    for (const split of params.splits) {
+      const unlockUnix = Math.floor(split.unlockAt.getTime() / 1000).toString();
+      const claimants = [
+        new Claimant(params.ownerPublicKey, Claimant.predicateUnconditional()),
+        new Claimant(
+          split.recipientPublicKey,
+          Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
+        ),
+      ];
+      builder = builder.addOperation(
+        Operation.createClaimableBalance({
+          asset,
+          amount: split.amount,
+          claimants,
+        }),
+      );
+    }
+
+    const tx = builder.setTimeout(60).build();
+    tx.sign(ownerKey);
+    const result = await this.submit(svr, tx);
+    this.invalidateBalance(params.ownerPublicKey);
+
+    const balanceIds = params.splits.map((_, i) => tx.getClaimableBalanceId(i));
+    return { balanceIds, txHash: result.hash };
+  }
+
   async resetSafetyNet(params: {
     ownerAccountId: string;
     ownerPublicKey: string;

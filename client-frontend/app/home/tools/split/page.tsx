@@ -30,7 +30,6 @@ export default function SplitPage() {
   const [shares, setShares] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
@@ -49,21 +48,14 @@ export default function SplitPage() {
     if (chosen.length < 2) return setError("Please enter amounts for at least two loved ones.");
     setSubmitting(true);
     try {
-      for (let i = 0; i < chosen.length; i++) {
-        setProgress(i);
-        await safetyNetService.create({
-          label: `${label.trim()} — ${chosen[i].name}`,
-          amount: shares[chosen[i].id],
-          recipientId: chosen[i].id,
-          checkInIntervalMinutes: intervalMinutes,
-        });
-      }
+      await safetyNetService.createSplit({
+        label: label.trim(),
+        checkInIntervalMinutes: intervalMinutes,
+        splits: chosen.map((r) => ({ recipientId: r.id, amount: shares[r.id] })),
+      });
       router.push("/home");
     } catch (err) {
-      setError(
-        (err instanceof Error ? err.message : "Something went wrong.") +
-          (progress > 0 ? ` (${progress} of ${chosen.length} were set up — check your home screen.)` : ""),
-      );
+      setError(err instanceof Error ? err.message : "Something went wrong.");
       setSubmitting(false);
     }
   }
@@ -135,7 +127,7 @@ export default function SplitPage() {
         {error ? <p className="text-[15px] font-medium text-danger" role="alert">{error}</p> : null}
 
         <Button fullWidth loading={submitting} onClick={submit} disabled={recipients.length < 2}>
-          {submitting ? `Setting up ${progress + 1} of ${chosen.length}…` : `Set aside ${total > 0 ? formatMoney(total) : "money"}`}
+          {submitting ? "Setting up…" : `Set aside ${total > 0 ? formatMoney(total) : "money"}`}
         </Button>
       </div>
     </AppShell>

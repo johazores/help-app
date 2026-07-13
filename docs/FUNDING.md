@@ -34,11 +34,39 @@ judges, investors, and partners — without changing the core architecture or us
 - Check-ins count, delivered count (received + opened), paginated lists (100 rows).
 - Aggregate query for total set aside (no full-table scan in app code).
 
+### Atomic split safety net
+
+- Split tool now creates **one Stellar transaction** with multiple `createClaimableBalance` ops.
+- API: `POST /api/safety-nets/split`
+- Cheaper, atomic, and stronger demo story for judges.
+
+### USDC trustline migration
+
+- `ensureUsdcReady()` runs automatically when using wallets and before set-aside/claim.
+- Fixes pre-USDC accounts that lacked a USDC trustline.
+
+### Health check
+
+- `GET /api/health` — DB + Stellar config smoke test for monitoring/CI.
+
+### ESLint + CI
+
+- ESLint installed and configured (flat config via `@eslint/eslintrc`).
+- `npm run lint` now works across both workspaces.
+
+### Admin metrics fix
+
+- **Open to family** counts ACTIVE nets past unlock time (was always 0 — OPENED status unused).
+- **Delivered** counts RECEIVED + GUARDED + BACKUP_RECEIVED.
+
+### Receiver journey
+
+- Claim success screen shows permanent receipt note + honest cash-out “coming soon”.
+
 ### Performance
 
-- Admin overview uses targeted counts + limited `findMany` instead of loading all rows.
-- Settings, rates, and Stellar balances remain cached (60s / 20s TTL).
-- Home page computes urgent nets with `useMemo`.
+- Split: one tx instead of N sequential API calls.
+- Admin: paginated lists (100 rows), aggregate counts.
 
 ### CI
 

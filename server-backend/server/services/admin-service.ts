@@ -42,12 +42,13 @@ class AdminService {
   async overview() {
     const explorer = await settingsService.explorer();
 
+    const now = new Date();
     const [
       userCount,
       netCount,
       activeCount,
       receivedCount,
-      openedCount,
+      openToFamilyCount,
       checkInCount,
       setAsideRows,
       users,
@@ -56,9 +57,11 @@ class AdminService {
     ] = await Promise.all([
       prisma.user.count(),
       prisma.safetyNet.count(),
-      prisma.safetyNet.count({ where: { status: "ACTIVE" } }),
-      prisma.safetyNet.count({ where: { status: "RECEIVED" } }),
-      prisma.safetyNet.count({ where: { status: "OPENED" } }),
+      prisma.safetyNet.count({ where: { status: "ACTIVE", unlockAt: { gt: now } } }),
+      prisma.safetyNet.count({
+        where: { status: { in: ["RECEIVED", "BACKUP_RECEIVED", "GUARDED"] } },
+      }),
+      prisma.safetyNet.count({ where: { status: "ACTIVE", unlockAt: { lte: now } } }),
       prisma.activity.count({ where: { type: "CHECKED_IN" } }),
       prisma.safetyNet.findMany({
         where: { status: { in: ["ACTIVE", "OPENED"] } },
@@ -86,7 +89,7 @@ class AdminService {
     ]);
 
     const totalSetAside = setAsideRows.reduce((sum, n) => sum + Number(n.amount), 0);
-    const delivered = receivedCount + openedCount;
+    const delivered = receivedCount;
 
     return {
       explorer,
@@ -95,7 +98,7 @@ class AdminService {
         safetyNets: netCount,
         active: activeCount,
         received: receivedCount,
-        opened: openedCount,
+        opened: openToFamilyCount,
         checkIns: checkInCount,
         delivered,
         totalSetAside: totalSetAside.toString(),

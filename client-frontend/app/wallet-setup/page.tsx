@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { authService } from "@/services/auth-service";
 import { walletService } from "@/services/wallet-service";

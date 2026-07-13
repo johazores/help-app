@@ -27,6 +27,14 @@ class SafetyNetService {
     return apiClient.request<SafetyNet>("/safety-nets", { method: "POST", body: input });
   }
 
+  async createSplit(input: {
+    label: string;
+    checkInIntervalMinutes: number;
+    splits: Array<{ recipientId: string; amount: string }>;
+  }): Promise<SafetyNet[]> {
+    return apiClient.request<SafetyNet[]>("/safety-nets/split", { method: "POST", body: input });
+  }
+
   async checkIn(id: string): Promise<SafetyNet> {
     return apiClient.request<SafetyNet>(`/safety-nets/${id}/check-in`, { method: "POST" });
   }

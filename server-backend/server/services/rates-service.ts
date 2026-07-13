@@ -38,7 +38,7 @@ class RatesService {
       if (!res.ok) throw new Error(`Rates provider returned ${res.status}`);
       const data = (await res.json()) as Record<string, Record<string, number>>;
       const raw = data[coinId];
-      if (!raw) throw new Error("Rates provider returned no data for XLM");
+      if (!raw) throw new Error(`Rates provider returned no data for ${coinId}`);
 
       const rates: Record<string, number> = {};
       for (const cur of currencies) {

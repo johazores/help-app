@@ -345,8 +345,13 @@ export default function ClaimPage() {
                   <p className="mt-4 rounded-xl bg-paper px-4 py-3 text-[14px] text-subtle">
                     Your receipt number:{" "}
                     <span className="font-mono font-semibold text-ink">{receivedRef}</span>
+                    <span className="mt-1 block text-[13px]">Saved permanently — not just in the app.</span>
                   </p>
                 ) : null}
+                <p className="mt-5 rounded-xl border border-line bg-paper/60 px-4 py-3 text-[14px] leading-relaxed text-body">
+                  <span className="font-semibold text-ink">Move it to your pocket</span> — GCash, Maya, and
+                  bank transfer are coming soon. Your money is safe here under your name until then.
+                </p>
               </div>
             </>
           ) : null}

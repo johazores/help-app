@@ -43,8 +43,8 @@ export default function AdminPage() {
     adminService
       .overview()
       .then(setData)
-      .catch(() => {
-        // Expired or invalid admin session — back to the admin door.
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Couldn't load admin data.");
         adminAuthService.signOut();
         router.replace("/admin/sign-in");
       })
@@ -77,6 +77,7 @@ export default function AdminPage() {
     { label: "Watching now", value: stats.active.toString() },
     { label: "Check-ins", value: stats.checkIns.toString() },
     { label: "Delivered", value: stats.delivered.toString() },
+    { label: "Open to family", value: stats.opened.toString() },
     { label: "Set aside", value: formatMoney(stats.totalSetAside) },
   ];
 
@@ -97,7 +98,7 @@ export default function AdminPage() {
       <p className="mt-2 text-[16px] text-body">Everything happening across Sagip, in one place.</p>
 
       {/* Stats */}
-      <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {statCards.map((s) => (
           <div key={s.label} className="card p-5">
             <p className="text-[14px] text-subtle">{s.label}</p>

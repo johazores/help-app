@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { ratesService } from "@/services/rates-service";
 import { walletService } from "@/services/wallet-service";
 import { authService } from "@/services/auth-service";
-import { convertFromXlm, formatFiat, formatMoney } from "@/lib/format";
+import { convertFromHeld, formatFiat, formatMoney } from "@/lib/format";
 import type { DepositInfo, Rates } from "@/services/types";
 
 const CurrencyConverter = dynamic(
@@ -96,6 +96,7 @@ export default function DepositPage() {
   }
 
   const php = rates?.rates.PHP;
+  const stable = rates?.base === "USDC";
 
   return (
     <AppShell>
@@ -118,9 +119,12 @@ export default function DepositPage() {
             <p className="mt-1 break-words font-display text-[clamp(30px,8vw,40px)] font-bold leading-none">
               {formatMoney(info?.balance ?? "0")}
             </p>
+            {stable ? (
+              <p className="mt-1 text-[13px] text-paper/60">Stable value — held in USDC</p>
+            ) : null}
             {php !== undefined ? (
               <p className="mt-2 text-[15px] text-marigold-soft">
-                about {formatFiat(convertFromXlm(info?.balance ?? "0", php), "PHP")} today
+                about {formatFiat(convertFromHeld(info?.balance ?? "0", php), "PHP")} today
               </p>
             ) : null}
           </div>
@@ -169,7 +173,7 @@ export default function DepositPage() {
 
       <div className="mt-6">
         <CurrencyConverter
-          defaultFrom="XLM"
+          defaultFrom={rates?.base ?? "USDC"}
           defaultTo="PHP"
           defaultAmount={info ? String(Number(info.balance)) : "100"}
         />
