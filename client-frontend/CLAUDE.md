@@ -18,7 +18,7 @@
 
 **Hard rules**
 
-1. Browser code calls **`/api/...`** only (via services) — never `:8001` directly.
+1. Browser code calls **`/api/...`** only (via services) — never `:8001` directly (avoids CORS).
 2. No blockchain words in user-facing strings.
 3. API or Stellar changes belong in `server-backend/` first, then mirror here in `services/`.
 

@@ -32,6 +32,7 @@ class ApiClient {
       if (token) headers.Authorization = `Bearer ${token}`;
     }
 
+    // Same-origin only — /api is proxied to the backend via client proxy.ts (no CORS).
     const res = await fetch(`/api${path}`, {
       method: options.method ?? "GET",
       headers,

@@ -41,7 +41,8 @@ npm run e2e          # Stellar testnet (server-backend)
 2. **Service classes everywhere** — client `services/*`, server `server/services/*`.
 3. **Stellar stays server-side** — client never imports `@stellar/stellar-sdk`.
 4. **Plain language in UI** — users never see blockchain terminology.
-5. **Real testnet txs** — safety nets are claimable balances; preserve tx hashes and explorer links.
+5. **Same-origin API** — client uses relative `/api/*` + `proxy.ts`; CORS on backend is opt-in via `CORS_ORIGIN`.
+6. **Real testnet txs** — safety nets are claimable balances; preserve tx hashes and explorer links.
 
 ## Docs index
 
@@ -57,7 +58,7 @@ npm run e2e          # Stellar testnet (server-backend)
 ## Common mistakes
 
 - Adding `pages/api/` under **client-frontend** (API belongs in server-backend)
-- Using `fetch("http://localhost:8001/...")` in browser code (use `/api/...` via services)
+- Using `fetch("http://localhost:8001/...")` in browser code (use `/api/...` via services — avoids CORS)
 - Putting business logic in API route handlers instead of `server/services/`
 - Re-adding `/api` rewrites in `client-frontend/next.config.ts` (use `proxy.ts` only)
 - Stale **`src/`** folder at repo root — causes build errors; server `clean-stale.js` removes it on build

@@ -81,7 +81,13 @@ Full route list: run `npm run build` and inspect the Pages Router output.
 
 ## Environment variables
 
-Create `server-backend/.env`:
+Create `server-backend/.env` from the example:
+
+```bash
+cp .env.example .env
+```
+
+See [`.env.example`](./.env.example) for the full annotated list. Summary:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
@@ -93,6 +99,7 @@ Create `server-backend/.env`:
 | `ADMIN_PASSWORD` | Seed | Admin bootstrap password |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Optional | Email (PIN reset, check-in reminders) |
 | `CRON_SECRET` | Production | Protects `POST /api/cron/reminders` |
+| `CORS_ORIGIN` | Optional | Comma-separated browser origins for **direct** cross-origin API access (not needed when client proxies `/api`) |
 | `SKIP_TREASURY` | CI/offline | Set `1` to skip USDC treasury bootstrap in seed |
 
 Generate secrets:

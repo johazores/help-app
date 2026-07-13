@@ -22,6 +22,7 @@
 2. Never persist raw secret keys — use **`crypto.encrypt`**.
 3. New endpoints need a matching **`client-frontend/services/*`** update.
 4. Schema changes need a **Prisma migration** + seed update if settings change.
+5. **`CORS_ORIGIN`** is opt-in — normal traffic is same-origin via client `proxy.ts`.
 
 **Verify changes**
 

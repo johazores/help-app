@@ -36,15 +36,23 @@ npm run typecheck
 
 Open http://localhost:8000. The API at http://localhost:8001 is proxied automatically.
 
-## API proxy (`proxy.ts`)
+## API proxy (`proxy.ts`) & CORS
 
 Browser code uses `fetch("/api/...")` via `services/api-client.ts`. At runtime,
-`proxy.ts` rewrites those requests to the backend:
+`proxy.ts` rewrites those requests to the backend server-side:
 
 - **Dev default:** `http://localhost:8001`
 - **Production:** set `API_URL` to your backend origin (e.g. `https://api.example.com`)
 
+Because the browser only talks to the **client origin** (`:8000` or your app domain),
+API calls are **same-origin** — the browser never needs CORS headers for normal use.
+
 Do **not** add `/api` rewrites in `next.config.ts` — that duplicates the proxy.
+Do **not** point `api-client` at `http://localhost:8001` — that would trigger CORS.
+
+Optional: if you deploy the API on a separate public host **without** the client proxy,
+set `CORS_ORIGIN` on the backend (comma-separated allowed origins). See
+`server-backend/.env.example`.
 
 ## Project layout
 
@@ -67,12 +75,18 @@ next.config.ts    Security headers, turbopack root, monorepo tracing
 
 ## Environment
 
+Copy the example file when you need to override defaults:
+
+```bash
+cp .env.example .env.local
+```
+
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `API_URL` | Production | Backend origin for `proxy.ts` (omit locally — defaults to `:8001`) |
+| `API_URL` | Production only | Backend origin for `proxy.ts` (dev default: `http://localhost:8001`) |
 
-All secrets (`DATABASE_URL`, `AUTH_TOKEN_SECRET`, Stellar keys, SMTP, …) belong in
-`server-backend/.env`, not here.
+All secrets (`DATABASE_URL`, `AUTH_TOKEN_SECRET`, `CORS_ORIGIN`, SMTP, …) belong in
+**`server-backend/.env`** — see [`server-backend/.env.example`](../server-backend/.env.example).
 
 ## Related docs
 

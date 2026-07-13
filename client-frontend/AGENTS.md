@@ -29,7 +29,7 @@ Monorepo root: run commands from `help-app/` with `-w client-frontend` or use `n
 | Do | Don't |
 |----|-------|
 | Edit `app/`, `components/`, `services/`, `lib/format.ts` | Add `pages/api/` routes here |
-| Call backend via `services/*` → `/api/...` | `fetch("http://localhost:8001/...")` from browser code |
+| Call backend via `services/*` → `/api/...` (same-origin, proxied) | `fetch("http://localhost:8001/...")` from browser code |
 | Keep UI free of blockchain jargon | Show "Stellar", "XLM", "seed phrase", "blockchain" to users |
 | Use `@/` path alias | Import from `server-backend/` |
 | Match existing Tailwind + component patterns | Introduce a new UI library without reason |
@@ -55,12 +55,15 @@ Page (app/**/*.tsx)
 - Mobile-first layout; plain language for non-technical users (including elderly family).
 - Admin UI (`/admin`) uses **`adminAuthService`** / **`adminService`** with admin token scope.
 
-## API proxy
+## API proxy & CORS
 
 `proxy.ts` matches `/api/:path*` and rewrites to `API_URL` (default `http://localhost:8001`).
+The browser sees same-origin responses — **no CORS** for normal app traffic.
 
 - Do **not** re-add `rewrites()` for `/api` in `next.config.ts`.
-- In production, deploy with `API_URL` pointing at the backend origin.
+- Do **not** use absolute backend URLs in `api-client` or components.
+- In production, deploy with `API_URL` pointing at the backend origin (server-side only).
+- Backend `CORS_ORIGIN` is only for direct cross-origin browser access without this proxy.
 
 ## Commands
 

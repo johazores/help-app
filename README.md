@@ -156,7 +156,9 @@ This repo is an **npm workspaces monorepo** with two apps:
 | `server-backend` | 8001 | Next.js Pages Router API + Prisma + Stellar |
 
 The client proxies `/api/*` to the backend via Next.js 16 **`proxy.ts`** (reads `API_URL`), so the
-browser still calls relative `/api/...` paths — no CORS headaches during development.
+browser still calls relative `/api/...` paths on **the same origin** — no CORS preflights in the
+normal web app. The backend only emits CORS headers when `CORS_ORIGIN` is set (optional, for
+direct cross-origin API access without the proxy).
 
 Each workspace has its own **[client-frontend/README.md](./client-frontend/README.md)** and
 **[server-backend/README.md](./server-backend/README.md)**. AI coding rules live in each workspace's
@@ -191,15 +193,13 @@ Requires Node **20.9+** and a PostgreSQL database.
 # 1. Install (root installs both workspaces)
 npm install
 
-# 2. Configure the backend
+# 2. Configure env files
 cp server-backend/.env.example server-backend/.env
-#   DATABASE_URL         your Postgres connection string
-#   AUTH_TOKEN_SECRET    node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-#   APP_ENCRYPTION_KEY   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-#   ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD   optional — bootstraps /admin sign-in on seed
-#   SMTP_*               optional — email (PIN reset, check-in reminders)
-#   CRON_SECRET          optional — protects POST /api/cron/reminders
-#   SKIP_TREASURY=1      optional — skip USDC treasury bootstrap (CI / offline)
+# Edit server-backend/.env — see that file for all variables (required + optional).
+#
+# Client (optional in dev — defaults work for localhost:8000 → :8001 proxy):
+#   cp client-frontend/.env.example client-frontend/.env.local
+#   API_URL only needed in production when backend is on a separate host.
 
 # 3. Create the schema and seed Stellar network config
 npm run setup
@@ -226,6 +226,7 @@ Open http://localhost:8000 (UI). The API runs at http://localhost:8001 and is pr
 
 - Set **`API_URL`** on the client deployment to the public backend origin.
 - Backend needs `DATABASE_URL`, `AUTH_TOKEN_SECRET`, `APP_ENCRYPTION_KEY`, and SMTP/CRON vars as needed.
+- **CORS:** leave `CORS_ORIGIN` unset when the client proxies `/api` (recommended). Set it only if a browser app on another origin calls the API directly.
 - Schedule **`POST /api/cron/reminders`** hourly with `Authorization: Bearer $CRON_SECRET` (see `.github/workflows/reminders-cron.yml`).
 
 ## A 3-minute demo script

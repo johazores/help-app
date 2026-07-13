@@ -26,6 +26,44 @@ export interface AuthedAdmin {
 
 const SEEN_THROTTLE_MS = 5 * 60 * 1000;
 
+const CORS_METHODS = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
+const CORS_HEADERS = "Content-Type, Authorization";
+
+/** Comma-separated browser origins allowed to call the API directly (optional). */
+function allowedCorsOrigins(): string[] {
+  const raw = process.env.CORS_ORIGIN ?? process.env.CLIENT_ORIGIN ?? "";
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Optional CORS for direct browser → API calls (separate host without proxy).
+ * Default web app uses client `proxy.ts` + relative `/api/*` — same-origin, no CORS.
+ * Returns false when the request is fully handled (OPTIONS preflight).
+ */
+function applyCors(req: NextApiRequest, res: NextApiResponse): boolean {
+  const origin = req.headers.origin;
+  const allowed = allowedCorsOrigins();
+
+  if (origin && allowed.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Methods", CORS_METHODS);
+    res.setHeader("Access-Control-Allow-Headers", CORS_HEADERS);
+    res.setHeader("Access-Control-Max-Age", "86400");
+    res.setHeader("Vary", "Origin");
+  }
+
+  if (req.method === "OPTIONS") {
+    res.status(origin && allowed.includes(origin) ? 204 : 403).end();
+    return false;
+  }
+
+  return true;
+}
+
 function bearer(req: NextApiRequest): string {
   const header = req.headers.authorization ?? "";
   return header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -107,6 +145,7 @@ export function handler(
   fn: (req: NextApiRequest, res: NextApiResponse) => Promise<void>,
 ) {
   return async (req: NextApiRequest, res: NextApiResponse) => {
+    if (!applyCors(req, res)) return;
     try {
       await fn(req, res);
     } catch (err) {

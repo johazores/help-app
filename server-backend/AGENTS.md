@@ -97,9 +97,16 @@ Required in `server-backend/.env`:
 
 - `DATABASE_URL`, `AUTH_TOKEN_SECRET`, `APP_ENCRYPTION_KEY`
 
-Optional: `ADMIN_*`, `SMTP_*`, `CRON_SECRET`, `SKIP_TREASURY`
+Optional: `ADMIN_*`, `SMTP_*`, `CRON_SECRET`, `CORS_ORIGIN`, `SKIP_TREASURY`
 
-Never commit `.env`. Document new vars in this file's README section.
+### CORS
+
+The web app avoids CORS by design: the client calls relative `/api/*` and `proxy.ts`
+forwards server-side. **`CORS_ORIGIN` is optional** — set it only when a browser on
+another origin must call this API directly (no client proxy). Cron jobs, curl, and
+server-to-server calls are unaffected (CORS is browser-only).
+
+Never commit `.env`. Document new vars in this workspace README.
 
 ## Commands
 
