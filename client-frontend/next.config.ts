@@ -1,20 +1,14 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
-const apiOrigin = process.env.API_URL ?? "http://localhost:3001";
 const workspaceRoot = path.join(process.cwd(), "..");
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   outputFileTracingRoot: workspaceRoot,
-  async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: `${apiOrigin}/api/:path*`,
-      },
-    ];
+  turbopack: {
+    root: workspaceRoot,
   },
   async headers() {
     return [

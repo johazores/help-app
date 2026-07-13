@@ -12,7 +12,6 @@ export const SafetyNetLifeline = memo(function SafetyNetLifeline({
   kind,
   unlockAt,
   lastCheckInAt,
-  forName: _forName,
   busy,
   streak,
   onCheckIn,

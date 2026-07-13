@@ -141,7 +141,7 @@ This repo is an **npm workspaces monorepo** with two apps:
 | `client-frontend` | 3000 | Next.js App Router UI |
 | `server-backend` | 3001 | Next.js Pages Router API + Prisma + Stellar |
 
-The client proxies `/api/*` to the backend in dev and production (via `API_URL`), so the
+The client proxies `/api/*` to the backend via Next.js 16 **`proxy.ts`** (via `API_URL`), so the
 browser still calls relative `/api/...` paths — no CORS headaches during development.
 
 - **Simple, hand-rolled HS256 JWT** auth — tokens travel in the `Authorization` header.
@@ -166,7 +166,7 @@ server-backend/
 
 ## Setup
 
-Requires Node 18+ and a PostgreSQL database.
+Requires Node 20.9+ and a PostgreSQL database.
 
 ```bash
 # 1. Install (root installs both workspaces)
