@@ -10,6 +10,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { PeopleIcon } from "@/components/ui/icons";
 import { authService } from "@/services/auth-service";
 import { recipientService } from "@/services/recipient-service";
+import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
+import { LoadErrorBanner } from "@/components/load-error-banner";
 import type { Recipient } from "@/services/types";
 
 export default function PeoplePage() {
@@ -22,20 +24,30 @@ export default function PeoplePage() {
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = () => {
+    setLoadError(null);
+    return recipientService
+      .list()
+      .then((list) => {
+        setRecipients(list);
+        setAdding(list.length === 0);
+      })
+      .catch((err) => {
+        if (handleProtectedLoadError(err, router, () => authService.signOut()) === "error") {
+          setLoadError(loadErrorMessage(err));
+        }
+      })
+      .finally(() => setReady(true));
+  };
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
-    recipientService
-      .list()
-      .then((list) => {
-        setRecipients(list);
-        setAdding(list.length === 0);
-      })
-      .catch(() => authService.signOut())
-      .finally(() => setReady(true));
+    void load();
   }, [router]);
 
   async function save() {
@@ -70,6 +82,7 @@ export default function PeoplePage() {
 
   return (
     <AppShell>
+      {loadError ? <LoadErrorBanner message={loadError} onRetry={() => void load()} /> : null}
       <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">Loved ones</h1>
       <p className="mt-2 text-[17px] text-body">The people you can set money aside for.</p>
 

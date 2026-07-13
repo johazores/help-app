@@ -31,6 +31,7 @@ export function BalanceCard({ balance, rates: ratesProp }: { balance: string; ra
       {php !== undefined ? (
         <p className="mt-2 text-[15px] text-marigold-soft">
           about {formatFiat(convertFromHeld(balance, php), "PHP")} today
+          {rates?.stale ? " (last known rate)" : ""}
         </p>
       ) : null}
       <Link

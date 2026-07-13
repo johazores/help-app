@@ -1,3 +1,5 @@
+import { ApiRequestError } from "@/lib/api-errors";
+
 const USER_TOKEN_KEY = "sagip.token";
 const ADMIN_TOKEN_KEY = "sagip.admin.token";
 
@@ -33,11 +35,16 @@ class ApiClient {
     }
 
     // Same-origin only — /api is proxied to the backend via client proxy.ts (no CORS).
-    const res = await fetch(`/api${path}`, {
-      method: options.method ?? "GET",
-      headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`/api${path}`, {
+        method: options.method ?? "GET",
+        headers,
+        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      });
+    } catch {
+      throw new ApiRequestError(0, "Can't reach the server. Check your connection and try again.");
+    }
 
     const text = await res.text();
     let data: { error?: string } | null = null;
@@ -48,10 +55,14 @@ class ApiClient {
     }
 
     if (!res.ok) {
-      throw new Error(data?.error || "Something went wrong. Please try again.");
+      throw new ApiRequestError(
+        res.status,
+        data?.error || "Something went wrong. Please try again.",
+      );
     }
     return data as T;
   }
 }
 
+export { ApiRequestError };
 export const apiClient = new ApiClient();

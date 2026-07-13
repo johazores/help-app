@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { AppShell } from "@/components/app-shell";
 import { CardSkeleton } from "@/components/page-skeleton";
 import { Button } from "@/components/ui/button";
-import { ratesService } from "@/services/rates-service";
-import { walletService } from "@/services/wallet-service";
 import { authService } from "@/services/auth-service";
+import { walletService } from "@/services/wallet-service";
+import { ratesService } from "@/services/rates-service";
+import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
+import { LoadErrorBanner } from "@/components/load-error-banner";
+import { DataUrlImage } from "@/components/ui/data-url-image";
 import { convertFromHeld, formatFiat, formatMoney } from "@/lib/format";
 import type { DepositInfo, Rates } from "@/services/types";
 
@@ -36,31 +39,32 @@ export default function DepositPage() {
   const [copied, setCopied] = useState(false);
   const [adding, setAdding] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    setLoading(true);
+    try {
+      const [d, r] = await Promise.all([walletService.depositInfo(), ratesService.get()]);
+      setInfo(d);
+      setRates(r);
+      const qrData = await generateQr(d.address);
+      setQr(qrData);
+    } catch (err) {
+      if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
+      setLoadError(loadErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
-
-    Promise.all([walletService.depositInfo(), ratesService.get()])
-      .then(([d, r]) => {
-        setInfo(d);
-        setRates(r);
-        setLoading(false);
-        return generateQr(d.address).then(setQr);
-      })
-      .catch((err) => {
-        const msg = err instanceof Error ? err.message : "";
-        if (msg.includes("wallet")) {
-          router.replace("/wallet-setup");
-          return;
-        }
-        void authService.signOut();
-        router.replace("/sign-in");
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+    void load();
+  }, [router, load]);
 
   function copy() {
     if (!info) return;
@@ -83,7 +87,7 @@ export default function DepositPage() {
     }
   }
 
-  if (loading && !info) {
+  if (loading && !info && !loadError) {
     return (
       <AppShell>
         <CardSkeleton lines={2} />
@@ -100,6 +104,10 @@ export default function DepositPage() {
 
   return (
     <AppShell>
+      {loadError && !info ? (
+        <LoadErrorBanner message={loadError} onRetry={() => void load()} />
+      ) : (
+        <>
       <Link href="/home" className="text-[15px] font-semibold text-subtle hover:text-ink">
         ← Back
       </Link>
@@ -152,7 +160,11 @@ export default function DepositPage() {
           </p>
           <div className="mt-5 flex flex-col items-center">
             {qr ? (
-              <img src={qr} alt="Your deposit address as a scannable code" className="rounded-xl border border-line" />
+              <DataUrlImage
+                src={qr}
+                alt="Your deposit address as a scannable code"
+                className="rounded-xl border border-line"
+              />
             ) : (
               <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-line/60" />
             )}
@@ -178,6 +190,8 @@ export default function DepositPage() {
           defaultAmount={info ? String(Number(info.balance)) : "100"}
         />
       </div>
+        </>
+      )}
     </AppShell>
   );
 }

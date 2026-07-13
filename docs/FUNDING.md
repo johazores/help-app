@@ -82,7 +82,7 @@ judges, investors, and partners — without changing the core architecture or us
 
 1. **SEP-24 anchor** — real GCash/Maya/bank cash-out.
 2. **SMS reminders** — Semaphore/Twilio for users without email.
-3. **Atomic split** — single Stellar tx with multiple claimable balances.
+3. **SMS reminders** — Semaphore/Twilio for users without email.
 4. **KMS/HSM** — production key custody.
 
 ## Environment variables (new)

@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/icons";
 import { authService } from "@/services/auth-service";
 import { adminAuthService } from "@/services/admin-auth-service";
+import { healthService } from "@/services/health-service";
 
 const baseNav = [
   { href: "/home", label: "Home", Icon: HomeIcon },
@@ -38,9 +39,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isRoot, setIsRoot] = useState(false);
+  const [serverDown, setServerDown] = useState(false);
 
   useEffect(() => {
     setIsRoot(adminAuthService.isSignedIn());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    healthService
+      .check()
+      .then((h) => {
+        if (!cancelled) setServerDown(!h.ok);
+      })
+      .catch(() => {
+        if (!cancelled) setServerDown(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const nav = isRoot
@@ -88,6 +105,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </header>
+
+      {serverDown ? (
+        <div
+          role="status"
+          className="border-b border-danger/30 bg-danger/10 px-4 py-3 text-center text-[14px] font-medium text-ink"
+        >
+          Can&rsquo;t reach the server right now. Make sure the API is running on port 8001, or check{" "}
+          <code className="rounded bg-paper/80 px-1">API_URL</code> in production.
+        </div>
+      ) : null}
 
       {/* Mobile drawer */}
       {drawerOpen ? (

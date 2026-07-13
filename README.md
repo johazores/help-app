@@ -122,15 +122,14 @@ touch the database.
   app says clearly that email isn't set up rather than pretending to send.
 - **Add funds.** The **Add funds** screen shows a receive address (with QR) that works on
   testnet and mainnet alike, plus an instant test top-up for trying the send/receive flow.
-- **Live rates.** XLM is valued in PHP, USD, USDC, EUR, SAR, AED, SGD, and HKD via CoinGecko
+- **Live rates.** USDC (held asset) is valued in PHP, USD, EUR, SAR, AED, SGD, and HKD via CoinGecko
   (cached server-side, refreshed each minute), shown on balances and on the Add-funds screen.
 - **End-to-end test.** `npm run e2e` funds a sender and recipient on testnet, sets money
   aside, receives it, and asserts balances + fees on-chain — proof the flow really works.
 
 See **[docs/FUNDING.md](./docs/FUNDING.md)** for funding-sprint improvements (USDC, reminders,
 CI, admin KPIs), **[docs/PRODUCTION.md](./docs/PRODUCTION.md)** for the full path-to-production plan (the biggest
-items: hold **USDC** instead of XLM for stability, and integrate a **SEP-24 anchor** for real
-PHP deposit/cash-out).
+items: integrate a **SEP-24 anchor** for real PHP deposit/cash-out (USDC holding is already implemented on testnet).
 
 ## Tech stack
 
@@ -218,7 +217,8 @@ Open http://localhost:8000 (UI). The API runs at http://localhost:8001 and is pr
 | `npm run dev:client` / `dev:server` | One workspace only |
 | `npm run build` | Production build (server first, then client) |
 | `npm run typecheck` | TypeScript both workspaces |
-| `npm run lint` | ESLint both workspaces |
+| `npm run check` | Typecheck + lint (one command) |
+| `npm run health` | Curl backend `/api/health` (server must be running) |
 | `npm run setup` | Migrate + generate + seed backend |
 | `npm run e2e` | Stellar testnet integration test |
 

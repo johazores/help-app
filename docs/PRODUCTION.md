@@ -14,18 +14,20 @@ approvable and fundable.
 - Set aside money, check in, take back, and receive — all real claimable-balance
   transactions on Stellar testnet, each with a verifiable hash.
 - **Add funds flow** — receive-to-address (with QR) plus instant test top-ups.
-- **Live market rates** — XLM valued against PHP, USD, USDC, EUR, SAR, AED, SGD, HKD,
+- **Live market rates** — USDC (held asset) valued against PHP, USD, EUR, SAR, AED, SGD, HKD,
   refreshed every minute (CoinGecko), shown as “today’s value” and on balances.
 - **Admin panel** — full transaction log with explorer links, all users, all safety nets.
 - **End-to-end test** — `npm run e2e` funds a sender + recipient, sends, receives, and
   asserts balances and fees on-chain.
 
-**Deliberately still testnet-shaped:** funds are test XLM, funding uses Friendbot, and the
-held asset is XLM. The sections below are what it takes to make it real.
+**Deliberately still testnet-shaped:** funds are test USDC/XLM on testnet, funding uses Friendbot,
+and cash-out still needs a SEP-24 anchor. The sections below are what it takes to make it real.
 
 ---
 
 ## 2. The most important product decision: hold USDC, not XLM
+
+**Status: implemented on testnet** — safety nets settle in USDC; XLM is fees-only.
 
 A safety net must not lose value. **XLM’s price moves**, so ₱15,000 set aside today could
 be ₱12,000 next month — unacceptable for this use case. For production the held asset

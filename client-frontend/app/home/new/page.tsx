@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
@@ -12,6 +12,8 @@ import { authService } from "@/services/auth-service";
 import { recipientService } from "@/services/recipient-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { ratesService } from "@/services/rates-service";
+import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
+import { LoadErrorBanner } from "@/components/load-error-banner";
 import {
   convertFromHeld,
   formatFiat,
@@ -63,22 +65,35 @@ export default function NewSafetyNetPage() {
   const [reviewing, setReviewing] = useState(false);
   const [balance, setBalance] = useState<string>("0");
   const [phpRate, setPhpRate] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const [list, profile, rates] = await Promise.all([
+        recipientService.list(),
+        authService.me(),
+        ratesService.get(),
+      ]);
+      setRecipients(list);
+      setRecipientId(list[0]?.id ?? "");
+      setAddingNew(list.length === 0);
+      setBalance(profile.balance);
+      setPhpRate(rates.rates.PHP ?? null);
+    } catch (err) {
+      if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
+      setLoadError(loadErrorMessage(err));
+    } finally {
+      setReady(true);
+    }
+  }, [router]);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
-    Promise.all([recipientService.list(), authService.me(), ratesService.get()])
-      .then(([list, profile, rates]) => {
-        setRecipients(list);
-        setRecipientId(list[0]?.id ?? "");
-        setAddingNew(list.length === 0);
-        setBalance(profile.balance);
-        setPhpRate(rates.rates.PHP ?? null);
-      })
-      .catch(() => authService.signOut())
-      .finally(() => setReady(true));
+    void load();
     if (typeof window !== "undefined") {
       const preset = new URLSearchParams(window.location.search).get("preset");
       if (preset === "abuloy") {
@@ -86,7 +101,7 @@ export default function NewSafetyNetPage() {
         setIntervalMinutes(43200);
       }
     }
-  }, [router]);
+  }, [router, load]);
 
   async function saveRecipient() {
     setError(null);
@@ -178,6 +193,7 @@ export default function NewSafetyNetPage() {
 
   return (
     <AppShell>
+      {loadError ? <LoadErrorBanner message={loadError} onRetry={() => void load()} /> : null}
       <Link href="/home" className="text-[15px] font-semibold text-subtle hover:text-ink">
         ← Back
       </Link>

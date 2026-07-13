@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { DataUrlImage } from "@/components/ui/data-url-image";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -69,8 +70,7 @@ export default function ClaimCardPage() {
           <p className="mt-1 break-words font-display text-[26px] font-bold leading-tight text-ink">{net.forName}</p>
           <p className="mt-3 break-words font-display text-[36px] font-bold text-ink">{formatMoney(net.amount)}</p>
           {qr ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={qr} alt="Scan to open your link" className="mx-auto mt-5 rounded-xl border border-line" />
+            <DataUrlImage src={qr} alt="Scan to open your link" className="mx-auto mt-5 rounded-xl border border-line" />
           ) : (
             <div className="mx-auto mt-5 h-[240px] w-[240px] animate-pulse rounded-xl bg-line/60" />
           )}

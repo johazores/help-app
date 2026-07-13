@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { accountService } from "@/services/account-service";
+import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
+import { LoadErrorBanner } from "@/components/load-error-banner";
+import { DataUrlImage } from "@/components/ui/data-url-image";
 import { formatDateTime } from "@/lib/format";
 import type { Profile, SessionInfo } from "@/services/types";
 
@@ -58,30 +61,36 @@ export default function AccountPage() {
   const [pinBusy, setPinBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   function say(text: string, bad = false) {
     setNotice({ text, bad });
     setTimeout(() => setNotice(null), 5000);
   }
 
+  const load = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const [p, s] = await Promise.all([authService.me(), authService.sessions()]);
+      setProfile(p);
+      setName(p.name);
+      setEmailInput(p.email ?? "");
+      setSessions(s);
+    } catch (err) {
+      if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
+      setLoadError(loadErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
+
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
-    Promise.all([authService.me(), authService.sessions()])
-      .then(([p, s]) => {
-        setProfile(p);
-        setName(p.name);
-        setEmailInput(p.email ?? "");
-        setSessions(s);
-      })
-      .catch(() => {
-        void authService.signOut();
-        router.replace("/sign-in");
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+    void load();
+  }, [router, load]);
 
   async function saveName() {
     if (name.trim().length < 2) return say("Please enter your name.", true);
@@ -217,6 +226,7 @@ export default function AccountPage() {
 
   return (
     <AppShell>
+      {loadError ? <LoadErrorBanner message={loadError} onRetry={() => void load()} /> : null}
       <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">Account</h1>
 
       {notice ? (
@@ -237,7 +247,7 @@ export default function AccountPage() {
           <div className="flex items-center gap-4">
             {profile?.avatar ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={profile.avatar} alt="" className="h-16 w-16 rounded-full border border-line object-cover" />
+              <DataUrlImage src={profile.avatar} alt="" className="h-16 w-16 rounded-full border border-line object-cover" />
             ) : (
               <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ink font-display text-[22px] font-bold text-paper">
                 {initials}

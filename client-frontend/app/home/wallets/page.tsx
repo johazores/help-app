@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { walletService } from "@/services/wallet-service";
+import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
+import { LoadErrorBanner } from "@/components/load-error-banner";
 import type { WalletInfo } from "@/services/types";
 
 function shortAddress(a: string): string {
@@ -34,26 +36,32 @@ export default function WalletsPage() {
   const [revealBusy, setRevealBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  function say(text: string, bad = false) {
-    setNotice({ text, bad });
-    setTimeout(() => setNotice(null), 5000);
-  }
+  const load = useCallback(async () => {
+    setLoadError(null);
+    try {
+      setWallets(await walletService.list());
+    } catch (err) {
+      if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
+      setLoadError(loadErrorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
-    walletService
-      .list()
-      .then(setWallets)
-      .catch(() => {
-        void authService.signOut();
-        router.replace("/sign-in");
-      })
-      .finally(() => setLoading(false));
-  }, [router]);
+    void load();
+  }, [router, load]);
+
+  function say(text: string, bad = false) {
+    setNotice({ text, bad });
+    setTimeout(() => setNotice(null), 5000);
+  }
 
   async function doSwitch(wallet: WalletInfo) {
     setConfirmSwitch(null);
@@ -118,6 +126,7 @@ export default function WalletsPage() {
 
   return (
     <AppShell>
+      {loadError ? <LoadErrorBanner message={loadError} onRetry={() => void load()} /> : null}
       <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">Your wallets</h1>
       <p className="mt-2 max-w-xl text-[17px] text-body">
         The <strong>active</strong> wallet is the one used when you add funds or set money aside.
