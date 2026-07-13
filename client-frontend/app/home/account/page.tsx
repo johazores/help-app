@@ -246,7 +246,6 @@ export default function AccountPage() {
           <h2 className="text-[18px] font-bold text-ink">Your profile</h2>
           <div className="flex items-center gap-4">
             {profile?.avatar ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <DataUrlImage src={profile.avatar} alt="" className="h-16 w-16 rounded-full border border-line object-cover" />
             ) : (
               <span className="flex h-16 w-16 items-center justify-center rounded-full bg-ink font-display text-[22px] font-bold text-paper">

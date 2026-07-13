@@ -48,7 +48,7 @@ export default function PeoplePage() {
       return;
     }
     void load();
-  }, [router]);
+  }, [router, load]);
 
   async function save() {
     setError(null);
