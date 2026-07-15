@@ -114,7 +114,28 @@ jobs:
 
       - run: npm run typecheck
 
-      - run: npm run lint
+      - name: Run lint
+        id: lint
+        continue-on-error: true
+        run: |
+          set +e
+          npm run lint > lint-output.txt 2>&1
+          status=$?
+          cat lint-output.txt
+          exit $status
+
+      - name: Upload lint diagnostics
+        if: steps.lint.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-diagnostics
+          path: lint-output.txt
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Enforce lint result
+        if: steps.lint.outcome == 'failure'
+        run: exit 1
 
       - run: npm run build
 
@@ -123,7 +144,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sagip?schema=public
           AUTH_TOKEN_SECRET: ci-test-auth-secret-minimum-thirty-two-chars-long
-          APP_ENCRYPTION_KEY: dGVzdC1lbmMtZGVjcnlwdGlvbi1rZXktMzJieXRlcw==
+          APP_ENCRYPTION_KEY: dGVzdC1lbmMtZGVzdC1lbmMtZGVjcnlwdGlvbi1rZXktMzJieXRlcw==
           SKIP_TREASURY: "1"
         run: |
           npx next start -p 8001 &
