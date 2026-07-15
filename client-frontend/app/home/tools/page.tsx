@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 
 const tools = [
   {
+    href: "/home/tools/converter",
+    emoji: "💱",
+    eyebrow: "Planning",
+    title: "Currency converter",
+    body: "Estimate support across Philippine pesos and common OFW destination currencies before setting money aside.",
+    bestFor: "Planning tuition, monthly support, and gifts",
+  },
+  {
     href: "/home/tools/split",
     emoji: "👨‍👩‍👧",
     eyebrow: "Emergency planning",
@@ -57,6 +65,7 @@ const tools = [
 
 const situations = [
   { href: "/home/tools/checkup", label: "I am starting from zero" },
+  { href: "/home/tools/converter", label: "I need to compare currencies" },
   { href: "/home/tools/split", label: "I support several people" },
   { href: "/home/tools/gift?mode=parts", label: "I pay school expenses" },
   { href: "/home/paluwagan", label: "We save as a group" },
