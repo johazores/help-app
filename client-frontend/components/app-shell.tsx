@@ -18,7 +18,9 @@ import {
 } from "@/components/ui/icons";
 import { authService } from "@/services/auth-service";
 import { adminAuthService } from "@/services/admin-auth-service";
+import { configService } from "@/services/config-service";
 import { healthService } from "@/services/health-service";
+import type { AppConfig } from "@/services/types";
 
 const baseNav = [
   { href: "/home", label: "Home", Icon: HomeIcon },
@@ -26,6 +28,7 @@ const baseNav = [
   { href: "/home/tools", label: "Family tools", Icon: SparkIcon },
   { href: "/home/wallets", label: "Wallets", Icon: WalletIcon },
   { href: "/home/guide", label: "How it works", Icon: GuideIcon },
+  { href: "/home/trust", label: "Trust", Icon: ShieldIcon },
   { href: "/home/account", label: "Account", Icon: AccountIcon },
 ];
 
@@ -40,6 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isRoot, setIsRoot] = useState(false);
   const [serverDown, setServerDown] = useState(false);
+  const [config, setConfig] = useState<AppConfig | null>(null);
 
   useEffect(() => {
     setIsRoot(adminAuthService.isSignedIn());
@@ -60,9 +64,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    configService
+      .get()
+      .then((value) => {
+        if (!cancelled) setConfig(value);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const nav = isRoot
     ? [...baseNav, { href: "/admin", label: "Admin", Icon: ShieldIcon }]
     : baseNav;
+
+  const isTestnet = config ? config.network.toLowerCase() !== "public" : false;
 
   function signOut() {
     void authService.signOut().finally(() => router.push("/sign-in"));
@@ -70,15 +89,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-paper">
-      {/* Top bar */}
       <header className="sticky top-0 z-30 border-b border-line/70 bg-paper/85 backdrop-blur">
         <div className="container-page flex h-16 items-center justify-between">
-          <Link href="/home" aria-label="Sagip home">
-            <Logo />
-          </Link>
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/home" aria-label="Sagip home">
+              <Logo />
+            </Link>
+            {config ? (
+              <Link
+                href="/home/trust"
+                className={`hidden rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide sm:inline-flex ${
+                  isTestnet
+                    ? "border-marigold/50 bg-marigold/10 text-ink"
+                    : "border-sage/40 bg-sage/15 text-ink"
+                }`}
+              >
+                {isTestnet ? "Testnet preview" : config.network}
+              </Link>
+            ) : null}
+          </div>
 
-          {/* Desktop links */}
-          <nav className="hidden items-center gap-1 sm:flex">
+          <nav className="hidden items-center gap-1 lg:flex">
             {nav.map(({ href, label }) => (
               <Link
                 key={href}
@@ -95,9 +126,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </nav>
 
-          {/* Mobile hamburger */}
           <button
-            className="flex h-11 w-11 items-center justify-center rounded-lg text-ink sm:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-ink lg:hidden"
             aria-label="Open menu"
             onClick={() => setDrawerOpen(true)}
           >
@@ -111,22 +141,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           role="status"
           className="border-b border-danger/30 bg-danger/10 px-4 py-3 text-center text-[14px] font-medium text-ink"
         >
-          Can&rsquo;t reach the server right now. Make sure the API is running on port 8001, or check{" "}
-          <code className="rounded bg-paper/80 px-1">API_URL</code> in production.
+          Can&rsquo;t reach the server right now. Your data has not been refreshed. Please try again shortly.
         </div>
       ) : null}
 
-      {/* Mobile drawer */}
       {drawerOpen ? (
-        <div className="fixed inset-0 z-50 sm:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden">
           <button
             aria-label="Close menu"
             className="absolute inset-0 bg-ink/40"
             onClick={() => setDrawerOpen(false)}
           />
-          <div className="absolute right-0 top-0 flex h-full w-[82%] max-w-xs flex-col bg-paper p-6 shadow-lift animate-fade-up">
+          <div className="absolute right-0 top-0 flex h-full w-[82%] max-w-xs flex-col overflow-y-auto bg-paper p-6 shadow-lift animate-fade-up">
             <div className="flex items-center justify-between">
-              <Logo />
+              <div>
+                <Logo />
+                {config ? (
+                  <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-subtle">
+                    {isTestnet ? "Testnet preview" : config.network}
+                  </p>
+                ) : null}
+              </div>
               <button
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-ink"
                 aria-label="Close menu"
@@ -178,10 +213,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       ) : null}
 
-      {/* Main — extra bottom padding on mobile so the tab bar never covers content */}
       <main className="container-page py-8 pb-28 sm:py-10 sm:pb-10">{children}</main>
 
-      {/* Fixed bottom tab bar (mobile only), wallet-app style */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card/95 backdrop-blur sm:hidden">
         <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
           <TabLink href="/home" label="Home" active={isActive(pathname, "/home")}>
@@ -191,7 +224,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <PeopleIcon className="h-6 w-6" />
           </TabLink>
 
-          {/* Center action */}
           <Link href="/home/new" aria-label="Set aside money" className="flex flex-col items-center">
             <span className="-mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-ink text-paper shadow-lift">
               <PlusIcon className="h-7 w-7" />
