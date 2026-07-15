@@ -28,6 +28,7 @@ export interface ExplorerConfig {
 
 export interface RatesConfig {
   url: string;
+  fiatUrl: string;
   coinId: string;
   currencies: string[];
 }
@@ -38,7 +39,7 @@ class SettingsService {
   private async get(key: string): Promise<string> {
     if (this.cache.has(key)) return this.cache.get(key)!;
     const row = await prisma.setting.findUnique({ where: { key } });
-    if (!row) throw new ApiError(500, `Missing configuration: ${key}. Run the seed script.`);
+    if (!row) throw new ApiError(500, `Missing configuration: ${key}. Run the database sync.`);
     this.cache.set(key, row.value);
     return row.value;
   }
@@ -62,12 +63,13 @@ class SettingsService {
   }
 
   async rates(): Promise<RatesConfig> {
-    const [url, coinId, currencies] = await Promise.all([
+    const [url, fiatUrl, coinId, currencies] = await Promise.all([
       this.get("rates.url"),
+      this.get("rates.fiatUrl"),
       this.get("rates.coinId"),
       this.get("rates.currencies"),
     ]);
-    return { url, coinId, currencies: currencies.split(",").map((c) => c.trim()) };
+    return { url, fiatUrl, coinId, currencies: currencies.split(",").map((c) => c.trim()) };
   }
 
   private async getOptional(key: string): Promise<string | null> {
@@ -93,7 +95,39 @@ class SettingsService {
     };
   }
 
-  /** Bust cached values after seed updates (dev only). */
+  /**
+   * A fresh Vercel database has no funded USDC treasury. On testnet, fall back
+   * to XLM so Friendbot-backed top-ups remain usable instead of attempting an
+   * impossible USDC payment from an XLM-only relay account.
+   */
+  async ensureTestFundingReady(): Promise<{ switchedToXlm: boolean }> {
+    const [{ network }, asset] = await Promise.all([this.explorer(), this.asset()]);
+
+    if (network.toLowerCase() === "public") {
+      throw new ApiError(400, "Instant test funds are only available in the test environment.");
+    }
+
+    if (asset.heldAsset !== "USDC" || asset.treasuryAccountId) {
+      return { switchedToXlm: false };
+    }
+
+    await prisma.$transaction([
+      prisma.setting.upsert({
+        where: { key: "stellar.heldAsset" },
+        update: { value: "XLM" },
+        create: { key: "stellar.heldAsset", value: "XLM" },
+      }),
+      prisma.setting.upsert({
+        where: { key: "rates.coinId" },
+        update: { value: "stellar" },
+        create: { key: "rates.coinId", value: "stellar" },
+      }),
+    ]);
+
+    this.clearCache();
+    return { switchedToXlm: true };
+  }
+
   clearCache(): void {
     this.cache.clear();
   }
