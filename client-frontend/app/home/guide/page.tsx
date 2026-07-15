@@ -8,50 +8,50 @@ const steps = [
   {
     n: "1",
     title: "Add a loved one",
-    body: "Tell us who you want to look after — a parent, a child, a sibling. You can add as many people as you like.",
+    body: "Add the person you want to prepare for and keep their contact details current. A phone number helps with future recovery and verification work.",
   },
   {
     n: "2",
-    title: "Set money aside for them",
-    body: "Pick one of your loved ones, give it a short name like “Monthly support,” and choose an amount. The money is kept safe, and it stays completely yours.",
+    title: "Choose the right family tool",
+    body: "Use a safety net for ongoing protection, a gift for a known date, a tuition plan for scheduled support, or a split plan for several people.",
   },
   {
     n: "3",
-    title: "Check in every now and then",
-    body: "You choose how often — every week, every month, and so on. Each time, just tap “I’m okay.” That keeps the money in your hands and starts the timer again.",
+    title: "Set clear rules",
+    body: "Choose the amount, recipient, backup person, and check-in timing. Review every detail before confirming because money actions may not be reversible.",
   },
   {
     n: "4",
-    title: "Your family is always covered",
-    body: "If you ever miss your check-in — you’re unwell, you lose your phone, or worse — the money opens to the loved one you chose. They don’t need an account. They just tap a link and receive it.",
+    title: "Check in and review",
+    body: "Check in before the timer ends, review your plan regularly, and update your family if claim instructions change.",
   },
   {
     n: "5",
-    title: "You’re always in control",
-    body: "Change your mind? You can take the money back at any time while it’s still yours. Nothing happens without you.",
+    title: "Prepare your family",
+    body: "Privately share the claim link or printed card, verify your email, keep recovery information safe, and tell your family what Sagip can and cannot do.",
   },
 ];
 
 const faqs = [
   {
-    q: "Is my money safe?",
-    a: "Yes. The money is set aside and can only go to you or the loved one you chose — no one else. You can take it back whenever you like.",
+    q: "Is my money guaranteed to be safe?",
+    a: "No financial system is risk-free. Sagip currently runs on Stellar testnet with fictional value. The app encrypts wallet keys and records transactions, but the present model is custodial and still needs independent security review, regulated partners, and production controls before real-money use.",
   },
   {
-    q: "What if I forget to check in?",
-    a: "That’s the whole point. If you can’t check in, the money simply opens to your family, so they’re never left waiting.",
+    q: "Does missing a check-in prove something happened to me?",
+    a: "No. A missed check-in is only a rule you configured. It is not proof of death, incapacity, or an emergency. Choose a reasonable interval, add a backup person, and make sure your family understands the rule.",
   },
   {
     q: "Does my family need to sign up?",
-    a: "No. You send them a link. When the money is ready, they open the link and tap one button to receive it.",
+    a: "The current claim flow is designed so a recipient can use a private claim link without creating a full sender account. Production identity checks may still be required by a regulated payment or cash-out partner.",
   },
   {
-    q: "Can anyone change the rules after I set money aside?",
-    a: "No. The rules — who receives it and when — are recorded permanently when you confirm. Not even Sagip can redirect the money.",
+    q: "Can Sagip change or move funds?",
+    a: "Sagip currently operates encrypted custodial signing keys so it can perform actions confirmed through the app. Stellar receipts make activity verifiable, but production should add independent key controls, audits, and stronger recovery safeguards.",
   },
   {
-    q: "What if Sagip shuts down?",
-    a: "Your funds live on Stellar, not on our servers. Export your wallet recovery key anytime from Wallets. Money in an open safety net can still be received by your family using their link.",
+    q: "What if Sagip becomes unavailable?",
+    a: "Exporting wallet recovery information reduces dependency on the service, but recovery must be tested and stored safely. A production version should also support redundant recovery providers and documented continuity procedures.",
   },
 ];
 
@@ -60,15 +60,18 @@ export default function GuidePage() {
     <AppShell>
       <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">How Sagip works</h1>
       <p className="mt-2 max-w-2xl text-[17px] text-body">
-        A simple way to make sure the people you love are taken care of, even from far away.
+        Build a family plan people understand before they need it. The current app is a testnet preview, not a bank, insurer, remittance service, or legal estate plan.
       </p>
+
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+        <Link href="/home/tools/checkup"><Button size="md">Check family readiness</Button></Link>
+        <Link href="/home/trust"><Button size="md" variant="secondary">Review trust &amp; safety</Button></Link>
+      </div>
 
       <ol className="mt-8 max-w-2xl space-y-4">
         {steps.map((s) => (
           <li key={s.n} className="card flex gap-5 p-6">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink font-display text-[19px] font-bold text-paper">
-              {s.n}
-            </span>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink font-display text-[19px] font-bold text-paper">{s.n}</span>
             <div>
               <h2 className="text-[19px] font-bold text-ink">{s.title}</h2>
               <p className="mt-1 text-[16px] leading-relaxed text-body">{s.body}</p>
@@ -88,9 +91,7 @@ export default function GuidePage() {
       </div>
 
       <div className="mt-10 max-w-2xl">
-        <Link href="/home/new">
-          <Button>Set aside money now</Button>
-        </Link>
+        <Link href="/home/new"><Button>Set up a test safety net</Button></Link>
       </div>
     </AppShell>
   );
