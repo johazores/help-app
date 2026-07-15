@@ -62,8 +62,8 @@ export default function FamilyReadinessCheckupPage() {
   }, [load, router]);
 
   const steps = useMemo<ReadinessStep[]>(() => {
-    const hasCoreNet = nets.some((net) => net.kind !== "GIFT" && net.status !== "CLOSED");
-    const hasBackup = nets.some((net) => Boolean(net.backupName) && net.status !== "CLOSED");
+    const coreNet = nets.find((net) => net.kind !== "GIFT" && net.status !== "CLOSED");
+    const backupNet = nets.find((net) => Boolean(net.backupName) && net.status !== "CLOSED");
     return [
       {
         title: "Verify a recovery email",
@@ -82,16 +82,16 @@ export default function FamilyReadinessCheckupPage() {
       {
         title: "Create one core safety net",
         body: "Start with one simple plan before using gifts, tuition schedules, or group savings.",
-        href: "/home/new",
-        action: "Create safety net",
-        done: hasCoreNet,
+        href: coreNet ? `/home/${coreNet.id}` : "/home/new",
+        action: coreNet ? "Review safety net" : "Create safety net",
+        done: Boolean(coreNet),
       },
       {
         title: "Add a backup recipient",
         body: "A second trusted person reduces the chance that one unavailable recipient blocks the family plan.",
-        href: hasCoreNet ? `/home/${nets.find((net) => net.kind !== "GIFT" && net.status !== "CLOSED")?.id ?? ""}` : "/home/new",
-        action: hasCoreNet ? "Review safety net" : "Create plan first",
-        done: hasBackup,
+        href: backupNet ? `/home/${backupNet.id}` : "/home/new",
+        action: backupNet ? "Review backup plan" : "Create a plan with backup",
+        done: Boolean(backupNet),
       },
     ];
   }, [nets, profile?.emailVerified, recipients.length]);
