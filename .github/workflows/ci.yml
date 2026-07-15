@@ -51,9 +51,32 @@ jobs:
           npm ci --omit=dev --ignore-scripts
           npm run prisma:generate -w server-backend
 
-      - name: Prisma migrate & seed
+      - name: Prisma migrate, deployment sync & seed
         working-directory: server-backend
-        run: npx prisma migrate deploy && npm run db:seed
+        run: |
+          npx prisma migrate deploy
+          npm run db:sync
+
+          node --input-type=module <<'NODE'
+          import { PrismaClient } from "@prisma/client";
+          const prisma = new PrismaClient();
+          const heldAsset = await prisma.setting.findUnique({ where: { key: "stellar.heldAsset" } });
+          if (heldAsset?.value !== "USDC") throw new Error("Database sync did not create stellar.heldAsset.");
+          await prisma.setting.update({ where: { key: "stellar.heldAsset" }, data: { value: "XLM" } });
+          await prisma.$disconnect();
+          NODE
+
+          npm run db:sync
+
+          node --input-type=module <<'NODE'
+          import { PrismaClient } from "@prisma/client";
+          const prisma = new PrismaClient();
+          const heldAsset = await prisma.setting.findUnique({ where: { key: "stellar.heldAsset" } });
+          if (heldAsset?.value !== "XLM") throw new Error("Database sync overwrote an existing setting.");
+          await prisma.$disconnect();
+          NODE
+
+          npm run db:seed
 
       - run: npm run typecheck
 
