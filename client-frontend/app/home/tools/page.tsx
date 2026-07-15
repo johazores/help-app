@@ -80,7 +80,7 @@ export default function ToolsPage() {
                 Verify recovery details, add a loved one, create one core safety net, and add a backup person before using advanced tools.
               </p>
             </div>
-            <Link href="/home/tools/checkup" className="shrink-0"><Button>Start checkup</Button></Link>
+            <Link href="/home/tools/checkup" className="shrink-0"><Button variant="secondary">Start checkup</Button></Link>
           </div>
         </section>
 
