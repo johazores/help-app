@@ -134,7 +134,7 @@ export default function FamilyReadinessCheckupPage() {
             {nextStep ? (
               <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[15px] text-paper/80">Recommended next: <strong className="text-paper">{nextStep.title}</strong></p>
-                <Link href={nextStep.href}><Button size="md">{nextStep.action}</Button></Link>
+                <Link href={nextStep.href}><Button size="md" variant="secondary">{nextStep.action}</Button></Link>
               </div>
             ) : (
               <p className="mt-5 text-[15px] text-paper/80">Your basic setup is complete. Review it regularly and privately share claim instructions with your family.</p>
