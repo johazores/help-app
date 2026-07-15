@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
@@ -15,6 +15,8 @@ import { ratesService } from "@/services/rates-service";
 import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
 import { countdown, windowProgress } from "@/lib/format";
 import type { Profile, Rates, SafetyNet } from "@/services/types";
+
+const REFRESH_AFTER_MS = 30_000;
 
 /** Active safety nets past half their check-in window — needs a nudge. */
 function urgentNets(nets: SafetyNet[]): SafetyNet[] {
@@ -33,30 +35,43 @@ export default function HomePage() {
   const [rates, setRates] = useState<Rates | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const loadingRef = useRef(false);
+  const lastLoadedAt = useRef(0);
 
-  const load = useCallback(async () => {
-    setLoadError(null);
-    setLoading(true);
-    try {
-      const [p, n, r] = await Promise.all([
-        authService.me(),
-        safetyNetService.list(),
-        ratesService.get(),
-      ]);
-      if (!p.hasWallet) {
-        router.replace("/wallet-setup");
-        return;
+  const load = useCallback(
+    async ({ background = false }: { background?: boolean } = {}) => {
+      if (loadingRef.current) return;
+
+      loadingRef.current = true;
+      setLoadError(null);
+      if (!background) setLoading(true);
+
+      try {
+        const [p, n, r] = await Promise.all([
+          authService.me(),
+          safetyNetService.list(),
+          ratesService.get(),
+        ]);
+        lastLoadedAt.current = Date.now();
+
+        if (!p.hasWallet) {
+          router.replace("/wallet-setup");
+          return;
+        }
+
+        setProfile(p);
+        setNets(n);
+        setRates(r);
+      } catch (err) {
+        if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
+        setLoadError(loadErrorMessage(err));
+      } finally {
+        loadingRef.current = false;
+        if (!background) setLoading(false);
       }
-      setProfile(p);
-      setNets(n);
-      setRates(r);
-    } catch (err) {
-      if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
-      setLoadError(loadErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
+    },
+    [router],
+  );
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
@@ -68,10 +83,11 @@ export default function HomePage() {
 
   useEffect(() => {
     function onVisible() {
-      if (document.visibilityState === "visible" && authService.isSignedIn()) {
-        void load();
-      }
+      if (document.visibilityState !== "visible" || !authService.isSignedIn()) return;
+      if (Date.now() - lastLoadedAt.current < REFRESH_AFTER_MS) return;
+      void load({ background: true });
     }
+
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [load]);
