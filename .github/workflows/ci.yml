@@ -114,28 +114,7 @@ jobs:
 
       - run: npm run typecheck
 
-      - name: Run lint
-        id: lint
-        continue-on-error: true
-        run: |
-          set +e
-          npm run lint > lint-output.txt 2>&1
-          status=$?
-          cat lint-output.txt
-          exit $status
-
-      - name: Upload lint diagnostics
-        if: steps.lint.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: lint-diagnostics
-          path: lint-output.txt
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Enforce lint result
-        if: steps.lint.outcome == 'failure'
-        run: exit 1
+      - run: npm run lint
 
       - run: npm run build
 
