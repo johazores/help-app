@@ -119,7 +119,7 @@ async function bootstrapTreasury(): Promise<void> {
   console.log(`Treasury ready (${keypair.publicKey()}).`);
 }
 
-async function useFundableXlmFallback(): Promise<void> {
+async function applyFundableXlmFallback(): Promise<void> {
   await prisma.$transaction([
     prisma.setting.upsert({
       where: { key: "stellar.heldAsset" },
@@ -182,7 +182,7 @@ async function main() {
   if (process.env.SKIP_TREASURY !== "1") {
     await bootstrapTreasury();
   } else {
-    await useFundableXlmFallback();
+    await applyFundableXlmFallback();
   }
 }
 
