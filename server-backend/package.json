@@ -4,15 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 8001",
-    "build": "node scripts/clean-stale.js && prisma generate && next build",
+    "build": "node scripts/clean-stale.js && npm run prisma:generate && next build",
     "start": "next start -p 8001",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
+    "prisma:generate": "npm exec --yes --package=prisma@6.19.3 -- prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "e2e": "tsx scripts/e2e-test.ts",
-    "setup": "prisma migrate deploy && prisma generate && tsx prisma/seed.ts"
+    "setup": "prisma migrate deploy && npm run prisma:generate && tsx prisma/seed.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
