@@ -21,8 +21,30 @@ type CachedRates = {
 };
 
 const CACHE_MS = 5 * 60_000;
+const PROVIDER_TIMEOUT_MS = 8_000;
 const FRANKFURTER_URL = "https://api.frankfurter.dev/v2/rates";
 const COINBASE_XLM_URL = "https://api.coinbase.com/v2/exchange-rates?currency=XLM";
+
+async function fetchJson<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      headers: { accept: "application/json", ...headers },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`Provider returned ${response.status}`);
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Currency provider timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 class RatesService {
   private cache: CachedRates | null = null;
@@ -32,12 +54,10 @@ class RatesService {
     currencies: string[],
   ): Promise<{ rates: Record<string, number>; source: RateSource }> {
     try {
-      const response = await fetch(fiatUrl, { headers: { accept: "application/json" } });
-      if (!response.ok) throw new Error(`Fiat provider returned ${response.status}`);
-      const data = (await response.json()) as {
+      const data = await fetchJson<{
         result?: string;
         rates?: Record<string, number>;
-      };
+      }>(fiatUrl);
       if (data.result === "error" || !data.rates) throw new Error("Fiat provider returned no rates");
 
       const rates: Record<string, number> = { USD: 1, USDC: 1 };
@@ -57,9 +77,7 @@ class RatesService {
         .filter((currency) => currency !== "USD" && currency !== "USDC")
         .join(",");
       const fallbackUrl = `${FRANKFURTER_URL}?base=USD&quotes=${encodeURIComponent(quotes)}`;
-      const response = await fetch(fallbackUrl, { headers: { accept: "application/json" } });
-      if (!response.ok) throw primaryError;
-      const data = (await response.json()) as unknown;
+      const data = await fetchJson<unknown>(fallbackUrl);
       const rates: Record<string, number> = { USD: 1, USDC: 1 };
 
       if (Array.isArray(data)) {
@@ -89,13 +107,11 @@ class RatesService {
   ): Promise<{ price: number; source: RateSource }> {
     try {
       const query = `${url}?ids=${encodeURIComponent(coinId)}&vs_currencies=usd&include_last_updated_at=true`;
-      const headers: Record<string, string> = { accept: "application/json" };
+      const headers: Record<string, string> = {};
       if (process.env.COINGECKO_API_KEY) {
         headers["x-cg-demo-api-key"] = process.env.COINGECKO_API_KEY;
       }
-      const response = await fetch(query, { headers });
-      if (!response.ok) throw new Error(`CoinGecko returned ${response.status}`);
-      const data = (await response.json()) as Record<string, { usd?: unknown }>;
+      const data = await fetchJson<Record<string, { usd?: unknown }>>(query, headers);
       const price = data[coinId]?.usd;
       if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
         throw new Error("CoinGecko returned no XLM price");
@@ -105,9 +121,7 @@ class RatesService {
         source: { name: "CoinGecko", url: "https://www.coingecko.com" },
       };
     } catch (primaryError) {
-      const response = await fetch(COINBASE_XLM_URL, { headers: { accept: "application/json" } });
-      if (!response.ok) throw primaryError;
-      const data = (await response.json()) as { data?: { rates?: Record<string, string> } };
+      const data = await fetchJson<{ data?: { rates?: Record<string, string> } }>(COINBASE_XLM_URL);
       const price = Number(data.data?.rates?.USD);
       if (!Number.isFinite(price) || price <= 0) throw primaryError;
       return {
