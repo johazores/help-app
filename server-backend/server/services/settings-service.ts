@@ -107,7 +107,20 @@ class SettingsService {
       throw new ApiError(400, "Instant test funds are only available in the test environment.");
     }
 
-    if (asset.heldAsset !== "USDC" || asset.treasuryAccountId) {
+    if (asset.heldAsset !== "USDC") {
+      return { switchedToXlm: false };
+    }
+
+    const treasuryExists = asset.treasuryAccountId
+      ? Boolean(
+          await prisma.stellarAccount.findUnique({
+            where: { id: asset.treasuryAccountId },
+            select: { id: true },
+          }),
+        )
+      : false;
+
+    if (treasuryExists) {
       return { switchedToXlm: false };
     }
 
