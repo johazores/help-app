@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { verifyPin } from "@/lib/crypto";
+import { settingsService } from "@/server/services/settings-service";
 import { stellarService } from "@/server/services/stellar-service";
 
 const MAX_TEST_TOPUP = 1000;
@@ -137,13 +138,24 @@ class WalletService {
     if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_TEST_TOPUP) {
       throw new ApiError(400, `Please choose an amount between 1 and ${MAX_TEST_TOPUP}.`);
     }
+
+    const funding = await settingsService.ensureTestFundingReady();
     const active = await this.requireActive(userId);
     const { txHash } = await stellarService.addTestFunds(
       active.stellarAccount.publicKey,
       amount.toFixed(7),
     );
-    const balance = await stellarService.availableBalance(active.stellarAccount.publicKey);
-    return { balance, txHash };
+    const [balance, asset] = await Promise.all([
+      stellarService.availableBalance(active.stellarAccount.publicKey),
+      settingsService.asset(),
+    ]);
+
+    return {
+      balance,
+      txHash,
+      asset: asset.heldAsset,
+      switchedAsset: funding.switchedToXlm,
+    };
   }
 }
 
