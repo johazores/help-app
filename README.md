@@ -78,8 +78,9 @@ each loved one (via Friendbot) so non-technical, elderly family members can rece
 money without managing anything. Secrets are encrypted with **AES-256-GCM** before they
 touch the database.
 
-> Under the hood this runs on **Stellar testnet** and uses test XLM as stand-in “money.”
-> The UI keeps amounts as plain numbers and never shows technical units.
+> Under the hood this runs on **Stellar testnet** and holds **USDC** (stable value) for
+> safety nets, with test XLM only for network fees. The UI keeps amounts as plain numbers
+> and never shows technical units.
 
 ## Testnet, real transactions & the admin panel
 
@@ -110,10 +111,10 @@ touch the database.
   flow: send-now gifts, scheduled gifts ("opens on a date"), tuition plans that open in parts,
   split safety nets across several loved ones, savings goals with progress bars, an abuloy
   preset, a printable QR claim card for each net/gift, an emergency "ask to open it now"
-  request the sender approves or dismisses, check-in streaks, and **backup beneficiaries**
-  (post-receipt succession if the primary receiver can't keep checking in). Paluwagan is shown as an
-  honest coming-soon (it needs multi-user coordination). All of it reuses the same
-  claimable-balance machinery — gifts are nets with an open date and no check-in.
+  request the sender approves or dismisses, check-in streaks, **backup beneficiaries**
+  (post-receipt succession if the primary receiver can't keep checking in), and a **Paluwagan**
+  MVP (invite-only savings circle). All of it reuses the same claimable-balance machinery —
+  gifts are nets with an open date and no check-in.
 - **Account management.** Users get a full account area: profile + photo, add/change email
   with 6-digit verification codes, change PIN (signs out other devices), forgot-PIN recovery
   via verified email, and multi-device session management with revocation. Email delivery
@@ -121,62 +122,112 @@ touch the database.
   app says clearly that email isn't set up rather than pretending to send.
 - **Add funds.** The **Add funds** screen shows a receive address (with QR) that works on
   testnet and mainnet alike, plus an instant test top-up for trying the send/receive flow.
-- **Live rates.** XLM is valued in PHP, USD, USDC, EUR, SAR, AED, SGD, and HKD via CoinGecko
+- **Live rates.** USDC (held asset) is valued in PHP, USD, EUR, SAR, AED, SGD, and HKD via CoinGecko
   (cached server-side, refreshed each minute), shown on balances and on the Add-funds screen.
 - **End-to-end test.** `npm run e2e` funds a sender and recipient on testnet, sets money
   aside, receives it, and asserts balances + fees on-chain — proof the flow really works.
 
-See **[PRODUCTION.md](./PRODUCTION.md)** for the full path-to-production plan (the biggest
-items: hold **USDC** instead of XLM for stability, and integrate a **SEP-24 anchor** for real
-PHP deposit/cash-out).
+See **[docs/FUNDING.md](./docs/FUNDING.md)** for funding-sprint improvements (USDC, reminders,
+CI, admin KPIs), **[docs/PRODUCTION.md](./docs/PRODUCTION.md)** for the full path-to-production plan (the biggest
+items: integrate a **SEP-24 anchor** for real PHP deposit/cash-out (USDC holding is already implemented on testnet).
+
+## Tech stack
+
+| Layer | Choice |
+|-------|--------|
+| Monorepo | npm workspaces (`client-frontend` + `server-backend`) |
+| Frontend | Next.js **16** (App Router), React **19**, Tailwind CSS 3 |
+| Backend | Next.js **16** (Pages Router API), Prisma **6**, PostgreSQL |
+| Blockchain | Stellar SDK — claimable balances on **testnet**, held asset **USDC** |
+| Auth | Hand-rolled HS256 JWT + revocable sessions |
+| Lint | ESLint 9 flat config (`eslint .` — `next lint` removed in Next 16) |
+| CI | GitHub Actions — typecheck, lint, build, health smoke test, optional e2e |
+
+Requires **Node 20.9+**.
 
 ## Architecture
 
-- **Next.js App Router** renders every page (`src/app/**`).
-- **Pages Router** is used **only** for API endpoints (`pages/api/**`). App Router (`app/`)
-  and Pages Router (`pages/`) both live at the project root — the standard Next.js layout.
-- **Simple, hand-rolled HS256 JWT** auth (`src/lib/jwt.ts`) — no auth library. Tokens
-  travel in the `Authorization` header, which behaves identically on mobile web and PWAs.
-- **Prisma + PostgreSQL** for persistence.
-- **Service classes everywhere.** Server domain logic lives in `src/server/services/**`;
-  all client-side API calls live in `src/services/**`. No `fetch` calls scattered in pages.
-- **Config & credentials in the database** (`Setting` table), not hard-coded. Only two
-  true secrets stay in env: the token signing key and the 32-byte encryption key.
-- **kebab-case** files and folders throughout.
+This repo is an **npm workspaces monorepo** with two apps:
+
+| App | Port | Role |
+|-----|------|------|
+| `client-frontend` | 8000 | Next.js App Router UI |
+| `server-backend` | 8001 | Next.js Pages Router API + Prisma + Stellar |
+
+The client proxies `/api/*` to the backend via Next.js 16 **`proxy.ts`** (reads `API_URL`), so the
+browser still calls relative `/api/...` paths on **the same origin** — no CORS preflights in the
+normal web app. The backend only emits CORS headers when `CORS_ORIGIN` is set (optional, for
+direct cross-origin API access without the proxy).
+
+Each workspace has its own **[client-frontend/README.md](./client-frontend/README.md)** and
+**[server-backend/README.md](./server-backend/README.md)**. AI coding rules live in each workspace's
+**`AGENTS.md`** / **`CLAUDE.md`**.
+
+- **Simple, hand-rolled HS256 JWT** auth — tokens travel in the `Authorization` header.
+- **Prisma + PostgreSQL** for persistence (lives in `server-backend/`).
+- **Service classes everywhere.** Server domain logic in `server-backend/server/services/**`;
+  client-side API calls in `client-frontend/services/**`.
+- **Config & credentials in the database** (`Setting` table), not hard-coded.
 
 ```
-app/                   App Router pages (landing, auth, dashboard, detail, claim, welcome)
-components/             Reusable UI (ui/* primitives + composites)
-lib/                   prisma, jwt, crypto, api guard, formatting
-server/services/       settings, stellar, user, recipient, safety-net
-services/              client-side API service classes
-pages/api/             HTTP endpoints only (Pages Router)
-prisma/                schema + seed
+client-frontend/
+  app/                 App Router pages
+  components/          Reusable UI
+  services/            client-side API service classes
+  proxy.ts             /api/* → server-backend (API_URL)
+  lib/format.ts        display helpers
+
+server-backend/
+  pages/api/           HTTP endpoints (Pages Router)
+  server/services/     domain logic (stellar, users, safety nets, …)
+  lib/                 prisma, jwt, crypto, api guard
+  prisma/              schema + seed
 ```
 
 ## Setup
 
-Requires Node 18+ and a PostgreSQL database.
+Requires Node **20.9+** and a PostgreSQL database.
 
 ```bash
-# 1. Install
+# 1. Install (root installs both workspaces)
 npm install
 
-# 2. Configure — copy the example and fill in the three values
-cp .env.example .env
-#   DATABASE_URL         your Postgres connection string
-#   AUTH_TOKEN_SECRET    node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-#   APP_ENCRYPTION_KEY   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# 2. Configure env files
+cp server-backend/.env.example server-backend/.env
+# Edit server-backend/.env — see that file for all variables (required + optional).
+#
+# Client (optional in dev — defaults work for localhost:8000 → :8001 proxy):
+#   cp client-frontend/.env.example client-frontend/.env.local
+#   API_URL only needed in production when backend is on a separate host.
 
 # 3. Create the schema and seed Stellar network config
-npx prisma migrate dev --name init
-npm run db:seed
+npm run setup
 
-# 4. Run
+# 4. Run both apps
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:8000 (UI). The API runs at http://localhost:8001 and is proxied via `proxy.ts`.
+
+### Development commands (repo root)
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Client `:8000` + server `:8001` |
+| `npm run dev:client` / `dev:server` | One workspace only |
+| `npm run build` | Production build (server first, then client) |
+| `npm run typecheck` | TypeScript both workspaces |
+| `npm run check` | Typecheck + lint (one command) |
+| `npm run health` | Curl backend `/api/health` (server must be running) |
+| `npm run setup` | Migrate + generate + seed backend |
+| `npm run e2e` | Stellar testnet integration test |
+
+### Production deploy notes
+
+- Set **`API_URL`** on the client deployment to the public backend origin.
+- Backend needs `DATABASE_URL`, `AUTH_TOKEN_SECRET`, `APP_ENCRYPTION_KEY`, and SMTP/CRON vars as needed.
+- **CORS:** leave `CORS_ORIGIN` unset when the client proxies `/api` (recommended). Set it only if a browser app on another origin calls the API directly.
+- Schedule **`POST /api/cron/reminders`** hourly with `Authorization: Bearer $CRON_SECRET` (see `.github/workflows/reminders-cron.yml`).
 
 ## A 3-minute demo script
 
@@ -185,9 +236,9 @@ The app has a **built-in demo mode**: when you create a safety net, choose
 set aside → check in → lapse → family receives — into a couple of minutes so you can show
 it live. No code changes needed.
 
-See **[DEMO.md](./DEMO.md)** for a full word-for-word script with timing and talking points,
+See **[docs/DEMO.md](./docs/DEMO.md)** for a full word-for-word script with timing and talking points,
 **[docs/SUCCESSION.md](./docs/SUCCESSION.md)** for the backup-beneficiary flow (including the VC
-"what if the receiver dies?" scenario), and **[ONBOARDING.md](./ONBOARDING.md)** for the plain-language “how to use the app” guide
+"what if the receiver dies?" scenario), and **[docs/ONBOARDING.md](./docs/ONBOARDING.md)** for the plain-language “how to use the app” guide
 (the same walkthrough is available in-app under **How it works**).
 
 ## What I deliberately left out

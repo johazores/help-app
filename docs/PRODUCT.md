@@ -16,7 +16,7 @@
 
 ## Current limitations (known and stated)
 - **No peso cash-out yet** — needs anchor/PSP partnership (the #1 roadmap item).
-- **Testnet XLM** — production should settle in USDC (volatility).
+- **Testnet USDC** — production mainnet USDC + anchor cash-out still on roadmap.
 - **No SMS/push** — recovery requires email; reminders are in-app only.
 - **Paluwagan MVP** — no automated reminders, admin freeze UI, or dispute tooling yet.
 - **Single-instance assumptions** — in-memory rate limiting; fine now, Redis later.

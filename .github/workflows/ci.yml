@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sagip
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sagip?schema=public
+      AUTH_TOKEN_SECRET: ci-test-auth-secret-minimum-thirty-two-chars-long
+      APP_ENCRYPTION_KEY: dGVzdC1lbmMtZGVjcnlwdGlvbi1rZXktMzJieXRlcw==
+      SKIP_TREASURY: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Prisma migrate & seed
+        working-directory: server-backend
+        run: npx prisma migrate deploy && npm run db:seed
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm run build
+
+      - name: Health check smoke test
+        working-directory: server-backend
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sagip?schema=public
+          AUTH_TOKEN_SECRET: ci-test-auth-secret-minimum-thirty-two-chars-long
+          APP_ENCRYPTION_KEY: dGVzdC1lbmMtZGVjcnlwdGlvbi1rZXktMzJieXRlcw==
+          SKIP_TREASURY: "1"
+        run: |
+          npx next start -p 8001 &
+          sleep 8
+          curl -sf http://localhost:8001/api/health | grep -q '"ok":true'
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Stellar testnet e2e
+        working-directory: server-backend
+        run: npm run e2e
