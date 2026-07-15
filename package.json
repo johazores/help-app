@@ -18,6 +18,7 @@
     "check": "npm run typecheck && npm run lint",
     "health": "curl -sf http://localhost:8001/api/health",
     "setup": "npm run setup -w server-backend",
+    "db:sync": "npm run db:sync -w server-backend",
     "db:seed": "npm run db:seed -w server-backend",
     "e2e": "npm run e2e -w server-backend",
     "postinstall": "npm run prisma:generate -w server-backend"
