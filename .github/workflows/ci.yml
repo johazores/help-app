@@ -39,6 +39,18 @@ jobs:
 
       - run: npm ci
 
+      - name: Production-only Prisma generation
+        run: |
+          temp_dir="$(mktemp -d)"
+          mkdir -p "$temp_dir/client-frontend" "$temp_dir/server-backend/prisma"
+          cp package.json package-lock.json "$temp_dir/"
+          cp client-frontend/package.json "$temp_dir/client-frontend/"
+          cp server-backend/package.json "$temp_dir/server-backend/"
+          cp server-backend/prisma/schema.prisma "$temp_dir/server-backend/prisma/"
+          cd "$temp_dir"
+          npm ci --omit=dev --ignore-scripts
+          npm run prisma:generate -w server-backend
+
       - name: Prisma migrate & seed
         working-directory: server-backend
         run: npx prisma migrate deploy && npm run db:seed
