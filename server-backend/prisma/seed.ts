@@ -27,8 +27,8 @@ const settings: Record<string, string> = {
   "stellar.heldAsset": "USDC",
   "stellar.usdcCode": "USDC",
   "stellar.usdcIssuer": TESTNET_USDC_ISSUER,
-  // USDC is ~1 USD — rates fetched against stablecoin for accurate peso display.
   "rates.url": "https://api.coingecko.com/api/v3/simple/price",
+  "rates.fiatUrl": "https://open.er-api.com/v6/latest/USD",
   "rates.coinId": "usd-coin",
   "rates.currencies": "php,usd,eur,sar,aed,sgd,hkd",
 };
@@ -119,6 +119,22 @@ async function bootstrapTreasury(): Promise<void> {
   console.log(`Treasury ready (${keypair.publicKey()}).`);
 }
 
+async function applyFundableXlmFallback(): Promise<void> {
+  await prisma.$transaction([
+    prisma.setting.upsert({
+      where: { key: "stellar.heldAsset" },
+      update: { value: "XLM" },
+      create: { key: "stellar.heldAsset", value: "XLM" },
+    }),
+    prisma.setting.upsert({
+      where: { key: "rates.coinId" },
+      update: { value: "stellar" },
+      create: { key: "rates.coinId", value: "stellar" },
+    }),
+  ]);
+  console.log("Treasury bootstrap skipped — using Friendbot-funded XLM for test flows.");
+}
+
 async function main() {
   for (const [envKey, settingKey] of [
     ["SMTP_HOST", "smtp.host"],
@@ -165,6 +181,8 @@ async function main() {
 
   if (process.env.SKIP_TREASURY !== "1") {
     await bootstrapTreasury();
+  } else {
+    await applyFundableXlmFallback();
   }
 }
 

@@ -30,7 +30,12 @@ class WalletService {
     return apiClient.request<DepositInfo>("/wallet/deposit-info");
   }
 
-  async addTestFunds(amount: number): Promise<{ balance: string; txHash: string }> {
+  async addTestFunds(amount: number): Promise<{
+    balance: string;
+    txHash: string;
+    asset: "XLM" | "USDC";
+    switchedAsset: boolean;
+  }> {
     return apiClient.request("/wallet/add-test-funds", { method: "POST", body: { amount } });
   }
 }

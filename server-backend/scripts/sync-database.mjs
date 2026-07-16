@@ -9,6 +9,9 @@ const prisma = new PrismaClient();
 /**
  * Application defaults required for a fresh database to serve requests.
  * Existing rows are never overwritten by these defaults.
+ *
+ * XLM is the safe testnet default because Friendbot can always fund it. A
+ * deployment may opt into USDC after provisioning a real treasury account.
  */
 const defaultSettings = {
   "stellar.horizonUrl": "https://horizon-testnet.stellar.org",
@@ -17,11 +20,12 @@ const defaultSettings = {
   "stellar.network": "testnet",
   "stellar.explorerTxUrl": "https://stellar.expert/explorer/testnet/tx/",
   "stellar.explorerAccountUrl": "https://stellar.expert/explorer/testnet/account/",
-  "stellar.heldAsset": "USDC",
+  "stellar.heldAsset": "XLM",
   "stellar.usdcCode": "USDC",
   "stellar.usdcIssuer": TESTNET_USDC_ISSUER,
   "rates.url": "https://api.coingecko.com/api/v3/simple/price",
-  "rates.coinId": "usd-coin",
+  "rates.fiatUrl": "https://open.er-api.com/v6/latest/USD",
+  "rates.coinId": "stellar",
   "rates.currencies": "php,usd,eur,sar,aed,sgd,hkd",
 };
 
@@ -39,7 +43,9 @@ const environmentSettings = {
   STELLAR_HELD_ASSET: "stellar.heldAsset",
   STELLAR_USDC_CODE: "stellar.usdcCode",
   STELLAR_USDC_ISSUER: "stellar.usdcIssuer",
+  STELLAR_TREASURY_ACCOUNT_ID: "stellar.treasuryAccountId",
   RATES_URL: "rates.url",
+  RATES_FIAT_URL: "rates.fiatUrl",
   RATES_COIN_ID: "rates.coinId",
   RATES_CURRENCIES: "rates.currencies",
   SMTP_HOST: "smtp.host",
@@ -110,6 +116,48 @@ async function ensureRequiredSettings() {
   return overrides.length;
 }
 
+/**
+ * Earlier deployments defaulted to USDC even when no funded treasury existed.
+ * That combination can never issue a top-up. Repair only non-public networks;
+ * production/mainnet configuration is never changed automatically.
+ */
+async function repairIncompleteTestFunding() {
+  const rows = await prisma.setting.findMany({
+    where: {
+      key: {
+        in: ["stellar.network", "stellar.heldAsset", "stellar.treasuryAccountId"],
+      },
+    },
+  });
+  const settings = new Map(rows.map((row) => [row.key, row.value]));
+  const network = settings.get("stellar.network")?.toLowerCase();
+  const heldAsset = settings.get("stellar.heldAsset")?.toUpperCase();
+  const treasuryAccountId = settings.get("stellar.treasuryAccountId");
+
+  if (network === "public" || heldAsset !== "USDC") return false;
+
+  const treasuryExists = treasuryAccountId
+    ? Boolean(await prisma.stellarAccount.findUnique({ where: { id: treasuryAccountId }, select: { id: true } }))
+    : false;
+  if (treasuryExists) return false;
+
+  await prisma.$transaction([
+    prisma.setting.upsert({
+      where: { key: "stellar.heldAsset" },
+      update: { value: "XLM" },
+      create: { key: "stellar.heldAsset", value: "XLM" },
+    }),
+    prisma.setting.upsert({
+      where: { key: "rates.coinId" },
+      update: { value: "stellar" },
+      create: { key: "rates.coinId", value: "stellar" },
+    }),
+  ]);
+
+  console.warn("USDC had no funded treasury; switched the test environment to fundable XLM.");
+  return true;
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     if (process.env.VERCEL === "1") {
@@ -124,8 +172,9 @@ async function main() {
   pushSchema();
 
   const overrideCount = await ensureRequiredSettings();
+  const repairedFunding = await repairIncompleteTestFunding();
   console.log(
-    `Database sync complete: ${Object.keys(defaultSettings).length} required settings checked, ${overrideCount} environment override(s) applied.`,
+    `Database sync complete: ${Object.keys(defaultSettings).length} required settings checked, ${overrideCount} environment override(s) applied${repairedFunding ? ", test funding repaired" : ""}.`,
   );
 }
 

@@ -154,11 +154,17 @@ export interface ClaimInfo {
   postReceiptLastCheckInAt: string | null;
 }
 
+export interface RateSource {
+  name: string;
+  url: string;
+}
+
 export interface Rates {
   base: "XLM" | "USDC";
   rates: Record<string, number>;
   fetchedAt: string;
   stale: boolean;
+  sources: RateSource[];
 }
 
 export interface DepositInfo {
