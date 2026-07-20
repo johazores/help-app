@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { allowMethods, handler } from "@/lib/api";
+import { allowMethods, handler, rateLimit } from "@/lib/api";
 import { safetyNetService } from "@/server/services/safety-net-service";
 
 // Recipient-facing: no login required, guarded by the unique claim code.
@@ -11,5 +11,7 @@ export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
     res.status(200).json(await safetyNetService.lookupByCode(code));
     return;
   }
+  rateLimit(`claim:${code}`, 5, 15 * 60_000);
+  rateLimit(`claim-ip:${req.socket.remoteAddress}`, 30, 15 * 60_000);
   res.status(200).json(await safetyNetService.claimByCode(code));
 });

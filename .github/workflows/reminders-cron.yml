@@ -9,15 +9,14 @@ on:
 jobs:
   reminders:
     runs-on: ubuntu-latest
-    if: vars.API_URL != '' || secrets.API_URL != ''
     steps:
       - name: Send check-in reminders
         env:
           API_URL: ${{ vars.API_URL || secrets.API_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "$API_URL" ]; then
-            echo "API_URL not configured — skipping."
+          if [ -z "$API_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "API_URL or CRON_SECRET is not configured — skipping."
             exit 0
           fi
           curl -sf -X POST "$API_URL/api/cron/reminders" \

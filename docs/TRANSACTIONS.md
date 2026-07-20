@@ -211,7 +211,8 @@ a failed action.**
   the user can open — real proof the money moved, not just an in-app claim.
 - **Reference numbers** on both sender and receiver sides.
 - **Audit history:** an admin can see every transaction across the platform with its verified
-  record. Users’ secret keys are **never** shown anywhere.
+  record, but only public keys. A recovery key is shown only to its owner in the PIN-guarded
+  wallet setup/reveal flow and is otherwise stored encrypted.
 - **Rules enforced by the network, not by us:** a loved one cannot receive early, and only the
   sender or the chosen loved one can ever touch the money.
 - **Planned:** OTP/2-factor for withdrawals, sign-in rate-limiting and lockout, PIN recovery.

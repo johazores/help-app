@@ -115,7 +115,8 @@ table — not hard-coded in source.
 ## Stellar & testing
 
 - **Testnet only** in current build — real txs on Stellar testnet, no mainnet money.
-- Safety nets use **USDC** as the held asset; XLM covers fees only.
+- The held asset is configurable: the public test deployment uses XLM, while a funded
+  classic issued USDC test asset can be enabled with the required trustlines.
 - **`npm run e2e`** — funds sender/recipient via Friendbot, creates claimable balance,
   claims it, asserts balances on-chain.
 - Use `SKIP_TREASURY=1` when seeding without network access (CI).

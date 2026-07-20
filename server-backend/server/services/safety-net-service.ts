@@ -11,7 +11,9 @@ const MINUTE_MS = 60 * 1000;
 const CHECK_IN_INTERVALS = [1, 10080, 43200, 129600];
 
 function makeClaimCode(): string {
-  return randomBytes(6).toString("base64url").slice(0, 8);
+  // Public claim links authorize money-moving actions. New links therefore use
+  // a full 128 bits of entropy; existing shorter links remain valid in the DB.
+  return randomBytes(16).toString("base64url");
 }
 
 type NetRow = SafetyNet & {

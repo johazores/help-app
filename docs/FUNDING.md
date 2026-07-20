@@ -5,10 +5,12 @@ judges, investors, and partners — without changing the core architecture or us
 
 ## Implemented
 
-### USDC as held asset (testnet)
+### Configurable USDC held asset (testnet)
 
-- Safety nets and balances settle in **USDC** (stable value) instead of volatile XLM.
-- XLM remains only for network fees (Friendbot-funded reserve).
+- Safety nets and balances can settle in classic issued **USDC** when a valid issuer and
+  funded treasury are configured. Fresh public test deployments fall back to XLM so the
+  demo remains usable when a test USDC treasury is unavailable.
+- XLM also covers network fees and account reserves.
 - `prisma/seed.ts` bootstraps a USDC treasury via path payment on testnet.
 - Configure via `Setting` table: `stellar.heldAsset`, `stellar.usdcIssuer`, etc.
 - Set `SKIP_TREASURY=1` to skip treasury bootstrap (CI, offline dev).

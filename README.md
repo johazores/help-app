@@ -11,25 +11,10 @@ the exact fear every OFW family lives with.
 
 **Backup beneficiary:** when you set money aside, you can name a *second* person. If your loved one receives the money but later can't keep checking in — for example, if they pass away — it automatically passes to that backup, enforced on Stellar the same way as the original safety net. See **[docs/SUCCESSION.md](./docs/SUCCESSION.md)**.
 
-No wallets. No seed phrases. No blockchain words anywhere in the interface. Just a
-mobile number, a 6-number PIN, and one reassuring button.
+The core family flow keeps blockchain jargon out of sight. People use a mobile number
+and 6-number PIN; recovery-key controls are confined to wallet setup and management.
 
 ---
-
-## Applying this to your repo (important)
-
-Replace your repo contents with this project **cleanly** — don't extract on top of the old
-files. In particular, make sure there is **no leftover `src/` folder and no second `pages/`
-folder**: a stale `pages/` next to the app directory is what causes the
-`Cannot find module '../../app/.../page.js'` build error. Quickest safe way:
-
-```bash
-# from your cloned repo, on a clean branch
-git rm -r --quiet . 2>/dev/null; true      # clear tracked files
-# copy everything from this project into the repo root, then:
-git add -A && git commit -m "Sagip: root layout, wallet UI, demo mode"
-git push
-```
 
 ## Why this idea
 
@@ -78,9 +63,9 @@ each loved one (via Friendbot) so non-technical, elderly family members can rece
 money without managing anything. Secrets are encrypted with **AES-256-GCM** before they
 touch the database.
 
-> Under the hood this runs on **Stellar testnet** and holds **USDC** (stable value) for
-> safety nets, with test XLM only for network fees. The UI keeps amounts as plain numbers
-> and never shows technical units.
+> Under the hood this runs on **Stellar testnet**. The public deployment currently uses
+> test XLM for a reliable demo flow; the code also supports a classic issued USDC test
+> asset when an issuer and funded treasury are configured.
 
 ## Testnet, real transactions & the admin panel
 
@@ -98,8 +83,8 @@ touch the database.
   (username + email + password, own sessions) from app users. Set `ADMIN_USERNAME`,
   `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in `.env`, run `npm run db:seed`, then sign in at
   **/admin/sign-in**. The panel (`/admin`) shows totals, the full transaction log with
-  explorer links, every safety net, and every user (public keys only — secret keys are
-  never exposed anywhere).
+  explorer links, every safety net, and every user (public keys only — recovery keys are
+  never exposed in the admin panel).
 - **Wallet onboarding & management.** After sign-up, people choose **Create a new wallet**
   (guided flow with a one-time recovery-key reveal and save confirmation) or **I already
   have a wallet** (paste a recovery key; unfunded keys are activated automatically on
@@ -122,14 +107,15 @@ touch the database.
   app says clearly that email isn't set up rather than pretending to send.
 - **Add funds.** The **Add funds** screen shows a receive address (with QR) that works on
   testnet and mainnet alike, plus an instant test top-up for trying the send/receive flow.
-- **Live rates.** USDC (held asset) is valued in PHP, USD, EUR, SAR, AED, SGD, and HKD via CoinGecko
+- **Live rates.** The configured held asset (XLM on the public test deployment, or USDC
+  when configured) is valued in PHP, USD, EUR, SAR, AED, SGD, and HKD via CoinGecko
   (cached server-side, refreshed each minute), shown on balances and on the Add-funds screen.
 - **End-to-end test.** `npm run e2e` funds a sender and recipient on testnet, sets money
   aside, receives it, and asserts balances + fees on-chain — proof the flow really works.
 
 See **[docs/FUNDING.md](./docs/FUNDING.md)** for funding-sprint improvements (USDC, reminders,
 CI, admin KPIs), **[docs/PRODUCTION.md](./docs/PRODUCTION.md)** for the full path-to-production plan (the biggest
-items: integrate a **SEP-24 anchor** for real PHP deposit/cash-out (USDC holding is already implemented on testnet).
+items: integrate a **SEP-24 anchor** for real PHP deposit/cash-out and configure production USDC settlement).
 
 ## Tech stack
 
@@ -138,7 +124,7 @@ items: integrate a **SEP-24 anchor** for real PHP deposit/cash-out (USDC holding
 | Monorepo | npm workspaces (`client-frontend` + `server-backend`) |
 | Frontend | Next.js **16** (App Router), React **19**, Tailwind CSS 3 |
 | Backend | Next.js **16** (Pages Router API), Prisma **6**, PostgreSQL |
-| Blockchain | Stellar SDK — claimable balances on **testnet**, held asset **USDC** |
+| Blockchain | Stellar SDK — claimable balances on **testnet**, configured XLM or classic issued USDC |
 | Auth | Hand-rolled HS256 JWT + revocable sessions |
 | Lint | ESLint 9 flat config (`eslint .` — `next lint` removed in Next 16) |
 | CI | GitHub Actions — typecheck, lint, build, health smoke test, optional e2e |
@@ -243,7 +229,5 @@ See **[docs/DEMO.md](./docs/DEMO.md)** for a full word-for-word script with timi
 
 ## What I deliberately left out
 
-- **QR codes.** The family receives via a plain shareable link; a QR wrapper is a trivial
-  future add, included only if it earns its place.
 - **Soroban / smart contracts.** Not needed — native predicates do the job and keep the
   build honest and finishable.
