@@ -1,0 +1,41 @@
+name: Instawards audit
+
+on:
+  pull_request:
+    paths:
+      - "docs/INSTAWARDS_*.md"
+      - "scripts/audit-instawards.mjs"
+      - "server-backend/scripts/e2e-test.ts"
+      - "server-backend/server/services/stellar-service.ts"
+      - "client-frontend/package.json"
+      - "LICENSE"
+      - "package.json"
+      - ".github/workflows/instawards-audit.yml"
+  push:
+    branches: [master]
+    paths:
+      - "docs/INSTAWARDS_*.md"
+      - "scripts/audit-instawards.mjs"
+      - "server-backend/scripts/e2e-test.ts"
+      - "server-backend/server/services/stellar-service.ts"
+      - "client-frontend/package.json"
+      - "LICENSE"
+      - "package.json"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run evidence audit
+        run: npm run audit:instawards
