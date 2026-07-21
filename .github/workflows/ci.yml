@@ -220,6 +220,15 @@ jobs:
 
       - run: npm ci
 
-      - name: Stellar testnet e2e
+      - name: Stellar testnet full lifecycle
         working-directory: server-backend
         run: npm run e2e
+
+      - name: Upload testnet receipt manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sagip-instawards-receipts
+          path: server-backend/artifacts/instawards-receipts.json
+          if-no-files-found: error
+          retention-days: 30

@@ -24,3 +24,6 @@ next-env.d.ts
 # Workspace build output
 client-frontend/.next/
 server-backend/.next/
+
+# Generated Instawards evidence
+server-backend/artifacts/
