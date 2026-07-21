@@ -7,7 +7,7 @@ import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { claimService } from "@/services/claim-service";
-import { countdown, formatDate, formatMoney, referenceId } from "@/lib/format";
+import { countdown, formatDate, formatDateTime, formatMoney, referenceId } from "@/lib/format";
 import type { ClaimInfo } from "@/services/types";
 
 type Screen =
@@ -45,6 +45,7 @@ export default function ClaimPage() {
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [checkedInUntil, setCheckedInUntil] = useState<string | null>(null);
   const [backupClaiming, setBackupClaiming] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [requested, setRequested] = useState(false);
@@ -120,11 +121,13 @@ export default function ClaimPage() {
   async function receiverCheckIn() {
     setCheckingIn(true);
     setError(null);
+    setCheckedInUntil(null);
     try {
-      await claimService.receiverCheckIn(code);
+      const result = await claimService.receiverCheckIn(code);
       await refresh();
+      setCheckedInUntil(result.guardUnlockAt);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't check in.");
+      setError(err instanceof Error ? err.message : "Couldn't check in. Please try again.");
     } finally {
       setCheckingIn(false);
     }
@@ -286,7 +289,12 @@ export default function ClaimPage() {
                   </p>
                   {guardRemaining && !info.guardIsOpen ? (
                     <p className="mt-3 text-[14px] font-semibold text-sage">
-                      Next check-in window opens in {guardRemaining}
+                      Time left to check in: {guardRemaining}
+                    </p>
+                  ) : null}
+                  {info.postReceiptLastCheckInAt ? (
+                    <p className="mt-1 text-[13px] text-subtle">
+                      Last check-in: {formatDateTime(info.postReceiptLastCheckInAt)}
                     </p>
                   ) : null}
                 </div>
@@ -295,6 +303,12 @@ export default function ClaimPage() {
                     I&rsquo;m okay — check in
                   </Button>
                 </div>
+                {checkedInUntil ? (
+                  <p className="mt-4 rounded-xl bg-sage/10 px-4 py-3 text-[15px] font-medium text-sage" role="status">
+                    You&rsquo;re checked in — this money stays in your hands. Check in again before{" "}
+                    {formatDateTime(checkedInUntil)}.
+                  </p>
+                ) : null}
                 {error ? (
                   <p className="mt-4 rounded-xl bg-danger/10 px-4 py-3 text-[15px] font-medium text-danger" role="alert">
                     {error}
