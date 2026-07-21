@@ -1,17 +1,5 @@
-/**
- * Sagip — end-to-end test on Stellar testnet.
- *
- * Runs the exact operations the app uses (claimable balances + time predicates)
- * and proves the full send/receive flow with real testnet assets:
- *   1. Fund a sender account (Friendbot)
- *   2. Fund a recipient account (Friendbot)
- *   3. Sender sets money aside  -> createClaimableBalance
- *   4. Recipient receives it     -> claimClaimableBalance
- *   5. Validate balances, fees, and print explorer links + tx hashes
- *
- * Run:  npx tsx scripts/e2e-test.ts
- * (Requires outbound network access to Stellar testnet.)
- */
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import {
   Asset,
   BASE_FEE,
@@ -21,113 +9,351 @@ import {
   Networks,
   Operation,
   TransactionBuilder,
+  type Transaction,
 } from "@stellar/stellar-sdk";
 
-const HORIZON = "https://horizon-testnet.stellar.org";
-const FRIENDBOT = "https://friendbot.stellar.org";
-const PASSPHRASE = Networks.TESTNET;
-const EXPLORER_TX = "https://stellar.expert/explorer/testnet/tx/";
-const AMOUNT = "100.0000000";
+const HORIZON_URL = "https://horizon-testnet.stellar.org";
+const FRIENDBOT_URL = "https://friendbot.stellar.org";
+const NETWORK_PASSPHRASE = Networks.TESTNET;
+const EXPLORER_TX_URL = "https://stellar.expert/explorer/testnet/tx/";
+const AMOUNT = "25.0000000";
+const UNLOCK_DELAY_MS = 4_000;
+const OUTPUT_PATH = resolve(
+  process.env.INSTAWARDS_RECEIPT_OUTPUT ?? "artifacts/instawards-receipts.json",
+);
 
-const server = new Horizon.Server(HORIZON);
-const feeXlm = (ops: number) => (Number(BASE_FEE) * ops) / 1e7;
+const server = new Horizon.Server(HORIZON_URL);
 
-function log(step: string, msg: string) {
-  console.log(`\n[${step}] ${msg}`);
+type Receipt = {
+  scenario: string;
+  action: string;
+  transactionHash: string;
+  explorerUrl: string;
+  sourceAccount: string;
+  balanceId: string | null;
+  confirmedAt: string;
+};
+
+const receipts: Receipt[] = [];
+
+function unix(date: Date): string {
+  return Math.floor(date.getTime() / 1000).toString();
 }
 
-async function fund(kp: Keypair, label: string) {
-  const res = await fetch(`${FRIENDBOT}?addr=${kp.publicKey()}`);
-  if (!res.ok) throw new Error(`Friendbot failed for ${label}: ${res.status}`);
-  log("FUND", `${label} funded: ${kp.publicKey()}`);
+function sleep(milliseconds: number): Promise<void> {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
 
-async function nativeBalance(pk: string): Promise<number> {
-  const acct = await server.loadAccount(pk);
-  const native = acct.balances.find((b) => b.asset_type === "native");
+async function fund(account: Keypair, label: string): Promise<void> {
+  const response = await fetch(`${FRIENDBOT_URL}?addr=${encodeURIComponent(account.publicKey())}`);
+  if (!response.ok) {
+    throw new Error(`Friendbot failed for ${label}: HTTP ${response.status}`);
+  }
+  console.log(`[fund] ${label}: ${account.publicKey()}`);
+}
+
+async function nativeBalance(publicKey: string): Promise<number> {
+  const account = await server.loadAccount(publicKey);
+  const native = account.balances.find((balance) => balance.asset_type === "native");
   return native ? Number(native.balance) : 0;
 }
 
-async function main() {
-  console.log("=== Sagip E2E test — Stellar testnet ===");
+async function submit(params: {
+  scenario: string;
+  action: string;
+  signer: Keypair;
+  transaction: Transaction;
+  balanceId?: string;
+}): Promise<string> {
+  params.transaction.sign(params.signer);
+  const result = await server.submitTransaction(params.transaction);
+  const explorerUrl = `${EXPLORER_TX_URL}${result.hash}`;
 
-  const sender = Keypair.random();
-  const recipient = Keypair.random();
+  receipts.push({
+    scenario: params.scenario,
+    action: params.action,
+    transactionHash: result.hash,
+    explorerUrl,
+    sourceAccount: params.signer.publicKey(),
+    balanceId: params.balanceId ?? null,
+    confirmedAt: new Date().toISOString(),
+  });
 
-  await fund(sender, "Sender");
-  await fund(recipient, "Recipient");
-
-  const senderBefore = await nativeBalance(sender.publicKey());
-  const recipientBefore = await nativeBalance(recipient.publicKey());
-  log("BALANCE", `Sender before:    ${senderBefore} XLM`);
-  log("BALANCE", `Recipient before: ${recipientBefore} XLM`);
-
-  // 3) Sender sets money aside (createClaimableBalance) — same predicates as the app.
-  const unlockAt = Math.floor(Date.now() / 1000) + 3; // claimable in ~3s
-  const claimants = [
-    new Claimant(sender.publicKey(), Claimant.predicateUnconditional()),
-    new Claimant(
-      recipient.publicKey(),
-      Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(String(unlockAt))),
-    ),
-  ];
-
-  const senderAcct = await server.loadAccount(sender.publicKey());
-  const createTx = new TransactionBuilder(senderAcct, { fee: BASE_FEE, networkPassphrase: PASSPHRASE })
-    .addOperation(Operation.createClaimableBalance({ asset: Asset.native(), amount: AMOUNT, claimants }))
-    .setTimeout(60)
-    .build();
-  createTx.sign(sender);
-  const createRes = await server.submitTransaction(createTx);
-  const balanceId = createTx.getClaimableBalanceId(0);
-  log("SEND", `Set aside ${AMOUNT} XLM. tx: ${createRes.hash}`);
-  log("SEND", `Explorer: ${EXPLORER_TX}${createRes.hash}`);
-  log("SEND", `Claimable balance id: ${balanceId}`);
-
-  // 5) Wait for the predicate to unlock, then recipient claims.
-  await new Promise((r) => setTimeout(r, 5000));
-
-  const recipientAcct = await server.loadAccount(recipient.publicKey());
-  const claimTx = new TransactionBuilder(recipientAcct, { fee: BASE_FEE, networkPassphrase: PASSPHRASE })
-    .addOperation(Operation.claimClaimableBalance({ balanceId }))
-    .setTimeout(60)
-    .build();
-  claimTx.sign(recipient);
-  const claimRes = await server.submitTransaction(claimTx);
-  log("RECEIVE", `Recipient claimed. tx: ${claimRes.hash}`);
-  log("RECEIVE", `Explorer: ${EXPLORER_TX}${claimRes.hash}`);
-
-  // 7) Validate.
-  const senderAfter = await nativeBalance(sender.publicKey());
-  const recipientAfter = await nativeBalance(recipient.publicKey());
-  const amount = Number(AMOUNT);
-
-  const recipientDelta = recipientAfter - recipientBefore;
-  const senderDelta = senderAfter - senderBefore;
-  const claimFee = feeXlm(1);
-  const createFee = feeXlm(1);
-
-  log("BALANCE", `Sender after:    ${senderAfter} XLM   (delta ${senderDelta.toFixed(7)})`);
-  log("BALANCE", `Recipient after: ${recipientAfter} XLM   (delta ${recipientDelta.toFixed(7)})`);
-  log("FEES", `Create fee: ${createFee} XLM · Claim fee: ${claimFee} XLM`);
-
-  // Recipient should gain ~AMOUNT minus their claim fee.
-  const recipientOk = Math.abs(recipientDelta - (amount - claimFee)) < 1e-4;
-  // Sender should lose ~AMOUNT plus create fee (the base reserve is refunded on claim).
-  const senderOk = Math.abs(senderDelta - (-amount - createFee)) < 1e-3;
-
-  console.log("\n=== RESULT ===");
-  console.log(`Recipient received the funds: ${recipientOk ? "PASS" : "FAIL"}`);
-  console.log(`Sender debited correctly:     ${senderOk ? "PASS" : "FAIL"}`);
-
-  if (!recipientOk || !senderOk) {
-    console.error("\nE2E FAILED — deltas did not match expectations.");
-    process.exit(1);
-  }
-  console.log("\nE2E PASSED ✔  Full fund -> send -> receive verified on-chain.");
+  console.log(`[${params.scenario}] ${params.action}: ${result.hash}`);
+  console.log(`[${params.scenario}] ${explorerUrl}`);
+  return result.hash;
 }
 
-main().catch((err) => {
-  console.error("\nE2E ERROR:", err?.response?.data ?? err);
+async function ownerLifecycle(): Promise<void> {
+  const scenario = "owner-check-in-and-take-back";
+  const owner = Keypair.random();
+  const recipient = Keypair.random();
+
+  await Promise.all([fund(owner, `${scenario} owner`), fund(recipient, `${scenario} recipient`)]);
+
+  const ownerBefore = await nativeBalance(owner.publicKey());
+  const recipientBefore = await nativeBalance(recipient.publicKey());
+  const firstUnlock = new Date(Date.now() + 10 * 60_000);
+
+  const createSource = await server.loadAccount(owner.publicKey());
+  const createTransaction = new TransactionBuilder(createSource, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      Operation.createClaimableBalance({
+        asset: Asset.native(),
+        amount: AMOUNT,
+        claimants: [
+          new Claimant(owner.publicKey(), Claimant.predicateUnconditional()),
+          new Claimant(
+            recipient.publicKey(),
+            Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unix(firstUnlock))),
+          ),
+        ],
+      }),
+    )
+    .setTimeout(60)
+    .build();
+
+  const firstBalanceId = createTransaction.getClaimableBalanceId(0);
+  await submit({
+    scenario,
+    action: "create",
+    signer: owner,
+    transaction: createTransaction,
+    balanceId: firstBalanceId,
+  });
+
+  const renewedUnlock = new Date(Date.now() + 20 * 60_000);
+  const checkInSource = await server.loadAccount(owner.publicKey());
+  const checkInTransaction = new TransactionBuilder(checkInSource, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.claimClaimableBalance({ balanceId: firstBalanceId }))
+    .addOperation(
+      Operation.createClaimableBalance({
+        asset: Asset.native(),
+        amount: AMOUNT,
+        claimants: [
+          new Claimant(owner.publicKey(), Claimant.predicateUnconditional()),
+          new Claimant(
+            recipient.publicKey(),
+            Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unix(renewedUnlock))),
+          ),
+        ],
+      }),
+    )
+    .setTimeout(60)
+    .build();
+
+  const renewedBalanceId = checkInTransaction.getClaimableBalanceId(1);
+  await submit({
+    scenario,
+    action: "check-in",
+    signer: owner,
+    transaction: checkInTransaction,
+    balanceId: renewedBalanceId,
+  });
+
+  const takeBackSource = await server.loadAccount(owner.publicKey());
+  const takeBackTransaction = new TransactionBuilder(takeBackSource, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.claimClaimableBalance({ balanceId: renewedBalanceId }))
+    .setTimeout(60)
+    .build();
+
+  await submit({
+    scenario,
+    action: "take-back",
+    signer: owner,
+    transaction: takeBackTransaction,
+    balanceId: renewedBalanceId,
+  });
+
+  const ownerAfter = await nativeBalance(owner.publicKey());
+  const recipientAfter = await nativeBalance(recipient.publicKey());
+  const ownerLoss = ownerBefore - ownerAfter;
+  const recipientDelta = recipientAfter - recipientBefore;
+
+  if (ownerLoss >= 0.01) {
+    throw new Error(`Owner principal was not recovered. Balance loss: ${ownerLoss}`);
+  }
+  if (Math.abs(recipientDelta) >= 0.0001) {
+    throw new Error(`Recipient balance changed before eligibility: ${recipientDelta}`);
+  }
+}
+
+async function successionLifecycle(): Promise<void> {
+  const scenario = "primary-and-backup-succession";
+  const owner = Keypair.random();
+  const primary = Keypair.random();
+  const backup = Keypair.random();
+
+  await Promise.all([
+    fund(owner, `${scenario} owner`),
+    fund(primary, `${scenario} primary`),
+    fund(backup, `${scenario} backup`),
+  ]);
+
+  const backupBefore = await nativeBalance(backup.publicKey());
+  const primaryUnlock = new Date(Date.now() + UNLOCK_DELAY_MS);
+
+  const createSource = await server.loadAccount(owner.publicKey());
+  const createTransaction = new TransactionBuilder(createSource, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      Operation.createClaimableBalance({
+        asset: Asset.native(),
+        amount: AMOUNT,
+        claimants: [
+          new Claimant(owner.publicKey(), Claimant.predicateUnconditional()),
+          new Claimant(
+            primary.publicKey(),
+            Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unix(primaryUnlock))),
+          ),
+        ],
+      }),
+    )
+    .setTimeout(60)
+    .build();
+
+  const originalBalanceId = createTransaction.getClaimableBalanceId(0);
+  await submit({
+    scenario,
+    action: "create",
+    signer: owner,
+    transaction: createTransaction,
+    balanceId: originalBalanceId,
+  });
+
+  await sleep(UNLOCK_DELAY_MS + 2_000);
+
+  const firstGuardUnlock = new Date(Date.now() + UNLOCK_DELAY_MS);
+  const primarySource = await server.loadAccount(primary.publicKey());
+  const primaryClaimTransaction = new TransactionBuilder(primarySource, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.claimClaimableBalance({ balanceId: originalBalanceId }))
+    .addOperation(
+      Operation.createClaimableBalance({
+        asset: Asset.native(),
+        amount: AMOUNT,
+        claimants: [
+          new Claimant(primary.publicKey(), Claimant.predicateUnconditional()),
+          new Claimant(
+            backup.publicKey(),
+            Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unix(firstGuardUnlock))),
+          ),
+        ],
+      }),
+    )
+    .setTimeout(60)
+    .build();
+
+  const firstGuardBalanceId = primaryClaimTransaction.getClaimableBalanceId(1);
+  await submit({
+    scenario,
+    action: "primary-receive-and-guard",
+    signer: primary,
+    transaction: primaryClaimTransaction,
+    balanceId: firstGuardBalanceId,
+  });
+
+  const renewedGuardUnlock = new Date(Date.now() + UNLOCK_DELAY_MS);
+  const checkInSource = await server.loadAccount(primary.publicKey());
+  const receiverCheckInTransaction = new TransactionBuilder(checkInSource, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.claimClaimableBalance({ balanceId: firstGuardBalanceId }))
+    .addOperation(
+      Operation.createClaimableBalance({
+        asset: Asset.native(),
+        amount: AMOUNT,
+        claimants: [
+          new Claimant(primary.publicKey(), Claimant.predicateUnconditional()),
+          new Claimant(
+            backup.publicKey(),
+            Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unix(renewedGuardUnlock))),
+          ),
+        ],
+      }),
+    )
+    .setTimeout(60)
+    .build();
+
+  const renewedGuardBalanceId = receiverCheckInTransaction.getClaimableBalanceId(1);
+  await submit({
+    scenario,
+    action: "receiver-check-in",
+    signer: primary,
+    transaction: receiverCheckInTransaction,
+    balanceId: renewedGuardBalanceId,
+  });
+
+  await sleep(UNLOCK_DELAY_MS + 2_000);
+
+  const backupSource = await server.loadAccount(backup.publicKey());
+  const backupClaimTransaction = new TransactionBuilder(backupSource, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(Operation.claimClaimableBalance({ balanceId: renewedGuardBalanceId }))
+    .setTimeout(60)
+    .build();
+
+  await submit({
+    scenario,
+    action: "backup-receive",
+    signer: backup,
+    transaction: backupClaimTransaction,
+    balanceId: renewedGuardBalanceId,
+  });
+
+  const backupAfter = await nativeBalance(backup.publicKey());
+  const backupDelta = backupAfter - backupBefore;
+  if (backupDelta < Number(AMOUNT) - 0.01) {
+    throw new Error(`Backup beneficiary did not receive the expected amount: ${backupDelta}`);
+  }
+}
+
+async function writeManifest(): Promise<void> {
+  const manifest = {
+    project: "Sagip",
+    network: "Stellar testnet",
+    generatedAt: new Date().toISOString(),
+    receiptCount: receipts.length,
+    receipts,
+  };
+
+  await mkdir(dirname(OUTPUT_PATH), { recursive: true });
+  await writeFile(OUTPUT_PATH, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  console.log(`Receipt manifest: ${OUTPUT_PATH}`);
+}
+
+async function main(): Promise<void> {
+  console.log("=== Sagip full lifecycle E2E - Stellar testnet ===");
+  await ownerLifecycle();
+  await successionLifecycle();
+  await writeManifest();
+
+  if (receipts.length !== 7) {
+    throw new Error(`Expected 7 confirmed transactions, received ${receipts.length}.`);
+  }
+
+  console.log("=== RESULT: PASS ===");
+  console.log("Create, check-in, take-back, primary receive, receiver check-in, and backup receive were verified on-chain.");
+}
+
+main().catch((error) => {
+  console.error("=== RESULT: FAIL ===");
+  console.error((error as { response?: { data?: unknown } })?.response?.data ?? error);
   process.exit(1);
 });
