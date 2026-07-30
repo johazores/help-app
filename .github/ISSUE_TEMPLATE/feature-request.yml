@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a focused Sagip testnet improvement
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Family safety or testnet workflow problem
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Custody, trust, regulation, privacy, or Stellar considerations
