@@ -1,8 +1,13 @@
 {
   "name": "sagip",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Sagip — set aside money for the people you love, on Stellar.",
+  "description": "Stellar-based family safety savings prototype with periodic check-ins and backup beneficiaries",
+  "author": {
+    "name": "Johanssen Azores",
+    "url": "https://github.com/johazores"
+  },
+  "license": "MIT",
   "workspaces": [
     "client-frontend",
     "server-backend"
