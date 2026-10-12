@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ImpactPanel } from "@/components/impact-panel";
 import { configService } from "@/services/config-service";
 import type { AppConfig } from "@/services/types";
 
@@ -69,7 +70,9 @@ export function TrustCenter({ insideApp = false }: { insideApp?: boolean }) {
           <ul className="mt-4 space-y-3 text-[15px] leading-relaxed text-body">
             <TrustItem>Wallet secrets are encrypted before they are stored in the database.</TrustItem>
             <TrustItem>Sign-in sessions can be reviewed and revoked from the account page.</TrustItem>
-            <TrustItem>Safety-net activity can include a Stellar transaction hash for independent verification.</TrustItem>
+            <TrustItem>PIN, code, and claim-link attempts are rate limited across every server.</TrustItem>
+            <TrustItem>Finding a lost claim link requires both the receiver&rsquo;s and the sender&rsquo;s mobile numbers.</TrustItem>
+            <TrustItem>Every money movement has a public Stellar receipt anyone can verify.</TrustItem>
             <TrustItem>Users can export wallet recovery information from the Wallets area.</TrustItem>
           </ul>
         </section>
@@ -108,6 +111,8 @@ export function TrustCenter({ insideApp = false }: { insideApp?: boolean }) {
         </section>
       </div>
 
+      <ImpactPanel />
+
       <section className="mt-5 rounded-2xl bg-ink p-6 text-paper sm:p-8">
         <h2 className="font-display text-[24px] font-bold">A safer way to use the preview</h2>
         <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-paper/80">
@@ -117,7 +122,7 @@ export function TrustCenter({ insideApp = false }: { insideApp?: boolean }) {
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <Link
             href={insideApp ? "/home/tools/checkup" : "/get-started"}
-            className="inline-flex h-12 items-center justify-center rounded-xl bg-marigold px-6 text-[15px] font-semibold text-ink hover:bg-marigold-deep hover:text-paper"
+            className="inline-flex h-12 items-center justify-center rounded-xl bg-marigold px-6 text-[15px] font-semibold text-ink hover:bg-marigold-soft"
           >
             {insideApp ? "Check family readiness" : "Try the testnet preview"}
           </Link>

@@ -188,3 +188,20 @@ export interface Pot {
   target: string;
   saved: string;
 }
+/** Public, aggregate-only activity figures from /api/stats. */
+export interface ImpactStats {
+  network: string;
+  explorerTxUrl: string;
+  totals: {
+    families: number;
+    safetyNets: number;
+    protectedNow: number;
+    checkIns: number;
+    deliveredToFamily: number;
+    backupHandovers: number;
+    confirmedTransactions: number;
+  };
+  last30Days: { safetyNets: number; checkIns: number; confirmedTransactions: number };
+  latestReceipts: Array<{ action: ActivityType; txHash: string; confirmedAt: string }>;
+  generatedAt: string;
+}
