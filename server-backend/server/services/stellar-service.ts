@@ -231,13 +231,18 @@ class StellarService {
     }
   }
 
-  /** Direct payment in the held asset (or `assetCode` when given). */
+  /**
+   * Direct payment in the held asset (or `assetCode` when given). `onSigned`
+   * receives the transaction hash before submission, so a caller can record
+   * it and later ask the network whether an interrupted payment confirmed.
+   */
   async pay(params: {
     fromAccountId: string;
     fromPublicKey: string;
     toPublicKey: string;
     amount: string;
     assetCode?: string;
+    onSigned?: (txHash: string) => Promise<void>;
   }): Promise<{ txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
@@ -256,10 +261,32 @@ class StellarService {
       .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
     tx.sign(key);
+    await params.onSigned?.(tx.hash().toString("hex"));
     const result = await this.submit(svr, tx, "payment");
     this.invalidateBalance(params.fromPublicKey);
     this.invalidateBalance(params.toPublicKey);
     return { txHash: result.hash };
+  }
+
+  /**
+   * What the network knows about a transaction: "success", "failed", or
+   * "missing" (never applied). Every Sagip transaction expires after
+   * TX_TIMEOUT_SECONDS, so "missing" after that window is final.
+   */
+  async transactionOutcome(txHash: string): Promise<"success" | "failed" | "missing"> {
+    const svr = await server();
+    try {
+      const record = await svr.transactions().transaction(txHash).call();
+      return record.successful ? "success" : "failed";
+    } catch (err) {
+      if (isNotFound(err)) return "missing";
+      throw new ApiError(502, "We couldn't check the payment status right now. Please try again.");
+    }
+  }
+
+  /** Seconds after which an unconfirmed Sagip transaction can no longer apply. */
+  get transactionTimeoutSeconds(): number {
+    return TX_TIMEOUT_SECONDS;
   }
 
   async revealSecret(stellarAccountId: string): Promise<string> {

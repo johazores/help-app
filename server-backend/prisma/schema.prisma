@@ -301,7 +301,8 @@ model PaluwaganContribution {
   amount   String
   status   String   @default("DUE") // DUE | PAYING (payment in flight) | PAID
   paidAt   DateTime?
-  txHash   String?
+  txHash   String? // set as soon as the payment is signed, before it is submitted
+  attemptedAt DateTime? // when the current PAYING attempt started
 
   @@unique([cycleId, memberId])
   @@index([memberId])

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { verifyPin } from "@/lib/crypto";
+import { log } from "@/lib/log";
 import { parseAmount } from "@/lib/validation";
 import { stellarService } from "@/server/services/stellar-service";
 import { walletService } from "@/server/services/wallet-service";
@@ -183,6 +184,11 @@ class PaluwaganService {
   }
 
   async detail(userId: string, groupId: string) {
+    const membership = await prisma.paluwaganMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+      select: { id: true },
+    });
+    if (membership) await this.resolvePending(groupId);
     const group = await prisma.paluwaganGroup.findUnique({
       where: { id: groupId },
       include: {
@@ -237,9 +243,10 @@ class PaluwaganService {
 
   /** Marks a member's contribution as in progress; fails if it already is or is paid. */
   private async reserveContribution(cycleId: string, memberId: string, amount: string) {
+    const attemptedAt = new Date();
     try {
       await prisma.paluwaganContribution.create({
-        data: { cycleId, memberId, amount, status: "PAYING" },
+        data: { cycleId, memberId, amount, status: "PAYING", attemptedAt },
       });
       return;
     } catch (err) {
@@ -247,16 +254,84 @@ class PaluwaganService {
     }
     const { count } = await prisma.paluwaganContribution.updateMany({
       where: { cycleId, memberId, status: "DUE" },
-      data: { status: "PAYING" },
+      data: { status: "PAYING", attemptedAt, txHash: null },
     });
     if (count === 0) {
       throw new ApiError(409, "You've already paid this round, or your payment is still going through.");
     }
   }
 
+  /**
+   * Settles payments left "in flight" by an interrupted request. A payment
+   * whose hash the network confirms becomes PAID; one the network rejected,
+   * or that can no longer apply because its time bound passed, returns to
+   * DUE so the member can pay again. Nothing is reset while it could still
+   * confirm, so a member is never asked to pay twice.
+   */
+  private async resolvePending(groupId: string) {
+    const pending = await prisma.paluwaganContribution.findMany({
+      where: { status: "PAYING", cycle: { groupId, status: "COLLECTING" } },
+    });
+    if (pending.length === 0) return;
+
+    const expiredBefore = Date.now() - (stellarService.transactionTimeoutSeconds + 30) * 1000;
+    let settledAny = false;
+    for (const row of pending) {
+      const expired = (row.attemptedAt?.getTime() ?? 0) < expiredBefore;
+      const outcome = row.txHash ? await stellarService.transactionOutcome(row.txHash) : "missing";
+      if (outcome === "success") {
+        await prisma.paluwaganContribution.updateMany({
+          where: { id: row.id, status: "PAYING" },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+        settledAny = true;
+      } else if (outcome === "failed" || expired) {
+        await prisma.paluwaganContribution.updateMany({
+          where: { id: row.id, status: "PAYING" },
+          data: { status: "DUE", txHash: null },
+        });
+      }
+    }
+    if (settledAny) await this.rotateIfComplete(groupId);
+  }
+
+  /** Moves to the next round (or finishes) once every payer's share is PAID. */
+  private async rotateIfComplete(groupId: string) {
+    const group = await prisma.paluwaganGroup.findUnique({
+      where: { id: groupId },
+      include: { members: true, cycles: { where: { status: "COLLECTING" } } },
+    });
+    const cycle = group?.cycles[0];
+    if (!group || !cycle) return;
+    const payersCount = group.members.length - 1;
+    const paidCount = await prisma.paluwaganContribution.count({
+      where: { cycleId: cycle.id, status: "PAID" },
+    });
+    if (paidCount < payersCount) return;
+
+    const next = await prisma.paluwaganCycle.findUnique({
+      where: { groupId_cycleNumber: { groupId: group.id, cycleNumber: cycle.cycleNumber + 1 } },
+    });
+    await prisma.$transaction(async (tx) => {
+      // Only the first request to see the round complete moves it on.
+      const { count } = await tx.paluwaganCycle.updateMany({
+        where: { id: cycle.id, status: "COLLECTING" },
+        data: { status: "PAID_OUT" },
+      });
+      if (count === 0) return;
+      if (next) {
+        await tx.paluwaganCycle.update({ where: { id: next.id }, data: { status: "COLLECTING" } });
+        await tx.paluwaganGroup.update({ where: { id: group.id }, data: { currentCycle: next.cycleNumber } });
+      } else {
+        await tx.paluwaganGroup.update({ where: { id: group.id }, data: { status: "COMPLETED" } });
+      }
+    });
+  }
+
   /** Member pays this cycle's recipient directly. Rotates when everyone has paid. */
   async contribute(userId: string, groupId: string, pin: string) {
     await this.requirePinOf(userId, pin);
+    await this.resolvePending(groupId);
     const group = await prisma.paluwaganGroup.findUnique({
       where: { id: groupId },
       include: { members: true, cycles: { where: { status: "COLLECTING" } } },
@@ -269,6 +344,7 @@ class PaluwaganService {
     if (cycle.payoutMemberId === me.id) {
       throw new ApiError(409, "It's your turn to receive this round — nothing to pay.");
     }
+
     // Pay the recipient directly, wallet to wallet.
     const recipient = group.members.find((m: MemberRow) => m.id === cycle.payoutMemberId)!;
     const myWallet = await prisma.wallet.findUnique({
@@ -284,6 +360,7 @@ class PaluwaganService {
     // Reserve this member's contribution before any money moves, so a double
     // tap or a second device can never pay the same round twice.
     await this.reserveContribution(cycle.id, me.id, group.contributionAmount);
+    const where = { cycleId_memberId: { cycleId: cycle.id, memberId: me.id } };
 
     let txHash: string;
     try {
@@ -292,39 +369,36 @@ class PaluwaganService {
         fromPublicKey: myWallet.stellarAccount.publicKey,
         toPublicKey: theirWallet.stellarAccount.publicKey,
         amount: group.contributionAmount,
+        onSigned: async (hash) => {
+          await prisma.paluwaganContribution.update({ where, data: { txHash: hash } });
+        },
       }));
     } catch (err) {
-      await prisma.paluwaganContribution.updateMany({
-        where: { cycleId: cycle.id, memberId: me.id, status: "PAYING" },
-        data: { status: "DUE" },
-      });
+      // Only a definite rejection frees the member to pay again. A timeout or
+      // unknown error may still confirm; resolvePending settles it later.
+      if (err instanceof ApiError && (err.status === 400 || err.status === 409)) {
+        await prisma.paluwaganContribution.updateMany({
+          where: { cycleId: cycle.id, memberId: me.id, status: "PAYING" },
+          data: { status: "DUE", txHash: null },
+        });
+      }
       throw err;
     }
 
-    await prisma.paluwaganContribution.update({
-      where: { cycleId_memberId: { cycleId: cycle.id, memberId: me.id } },
-      data: { status: "PAID", paidAt: new Date(), txHash },
-    });
-
-    // Rotate if everyone (except the recipient) has now paid.
-    const payersCount = group.members.length - 1;
-    const paidCount = await prisma.paluwaganContribution.count({
-      where: { cycleId: cycle.id, status: "PAID" },
-    });
-    if (paidCount >= payersCount) {
-      const next = await prisma.paluwaganCycle.findUnique({
-        where: { groupId_cycleNumber: { groupId: group.id, cycleNumber: cycle.cycleNumber + 1 } },
+    try {
+      await prisma.paluwaganContribution.update({
+        where,
+        data: { status: "PAID", paidAt: new Date(), txHash },
       });
-      await prisma.$transaction([
-        prisma.paluwaganCycle.update({ where: { id: cycle.id }, data: { status: "PAID_OUT" } }),
-        ...(next
-          ? [
-              prisma.paluwaganCycle.update({ where: { id: next.id }, data: { status: "COLLECTING" } }),
-              prisma.paluwaganGroup.update({ where: { id: group.id }, data: { currentCycle: next.cycleNumber } }),
-            ]
-          : [prisma.paluwaganGroup.update({ where: { id: group.id }, data: { status: "COMPLETED" } })]),
-      ]);
+    } catch (error) {
+      log("error", "reconciliation.required", { action: "paluwagan-pay", txHash, cycleId: cycle.id, error });
+      throw new ApiError(
+        500,
+        "Your share was sent, but we couldn't update the group yet. Please refresh in a moment.",
+      );
     }
+
+    await this.rotateIfComplete(group.id);
     return { txHash };
   }
 }
