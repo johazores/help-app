@@ -12,6 +12,9 @@
     "prisma:migrate": "prisma migrate dev",
     "db:sync": "node scripts/sync-database.mjs",
     "db:seed": "tsx prisma/seed.ts",
+    "test": "tsx --test tests/unit/*.test.ts",
+    "test:integration": "tsx --import ./tests/setup-env.ts --test tests/integration/*.test.ts",
+    "test:lifecycle": "tsx --import ./tests/setup-env.ts --test --test-timeout=300000 tests/lifecycle/*.test.ts",
     "e2e": "tsx scripts/e2e-test.ts",
     "setup": "prisma migrate deploy && npm run prisma:generate && tsx prisma/seed.ts"
   },
