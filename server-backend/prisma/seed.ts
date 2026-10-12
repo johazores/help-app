@@ -1,3 +1,4 @@
+import { loadEnvConfig } from "@next/env";
 import { PrismaClient } from "@prisma/client";
 import { randomBytes, scryptSync } from "node:crypto";
 import {
@@ -10,6 +11,9 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { encryptSecret } from "../lib/crypto";
+
+// `npm run setup` runs this file with tsx, which does not read .env on its own.
+loadEnvConfig(process.cwd());
 
 const prisma = new PrismaClient();
 
