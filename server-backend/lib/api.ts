@@ -241,14 +241,22 @@ export async function rateLimit(
   const key = bucketKey(scope, identity);
   const now = new Date();
   const resetAt = new Date(now.getTime() + windowMs);
+  // "resetAt" is a UTC timestamp without time zone (as Prisma stores it), so
+  // parameters are converted to UTC explicitly, whatever the session TimeZone.
   const rows = await prisma.$queryRaw<{ hits: number; resetAt: Date }[]>`
     INSERT INTO "RateLimitBucket" ("key", "hits", "resetAt")
-    VALUES (${key}, 1, ${resetAt})
+    VALUES (${key}, 1, ${resetAt}::timestamptz AT TIME ZONE 'UTC')
     ON CONFLICT ("key") DO UPDATE SET
-      "hits" = CASE WHEN "RateLimitBucket"."resetAt" <= ${now} THEN 1 ELSE "RateLimitBucket"."hits" + 1 END,
-      "resetAt" = CASE WHEN "RateLimitBucket"."resetAt" <= ${now} THEN ${resetAt} ELSE "RateLimitBucket"."resetAt" END
+      "hits" = CASE WHEN "RateLimitBucket"."resetAt" <= ${now}::timestamptz AT TIME ZONE 'UTC'
+        THEN 1 ELSE "RateLimitBucket"."hits" + 1 END,
+      "resetAt" = CASE WHEN "RateLimitBucket"."resetAt" <= ${now}::timestamptz AT TIME ZONE 'UTC'
+        THEN ${resetAt}::timestamptz AT TIME ZONE 'UTC' ELSE "RateLimitBucket"."resetAt" END
     RETURNING "hits", "resetAt"
   `;
+  // Keep the table small even when the hourly cron isn't configured.
+  if (Math.random() < 0.005) {
+    pruneRateLimits().catch((error) => log("warn", "rate_limit.prune_failed", { error }));
+  }
   const bucket = rows[0];
   if (bucket && bucket.hits > max) {
     const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt.getTime() - now.getTime()) / 1000));

@@ -120,6 +120,9 @@ jobs:
         run: npm test
 
       - name: Database integration tests
+        # A non-UTC session time zone catches timestamp conversion bugs.
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/sagip?schema=public&options=-c%20TimeZone%3DAsia%2FManila
         run: npm run test:integration
 
       - run: npm run build
