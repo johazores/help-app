@@ -8,7 +8,7 @@ import { LoadErrorBanner } from "@/components/load-error-banner";
 import { SafetyNetCard } from "@/components/safety-net-card";
 import { BalanceCard } from "@/components/balance-card";
 import { HomePageSkeleton } from "@/components/page-skeleton";
-import { Button } from "@/components/ui/button";
+import { buttonClasses } from "@/components/ui/button";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { ratesService } from "@/services/rates-service";
@@ -35,6 +35,7 @@ export default function HomePage() {
   const [rates, setRates] = useState<Rates | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState(false);
   const loadingRef = useRef(false);
   const lastLoadedAt = useRef(0);
 
@@ -43,15 +44,16 @@ export default function HomePage() {
       if (loadingRef.current) return;
 
       loadingRef.current = true;
-      setLoadError(null);
-      if (!background) setLoading(true);
+      if (!background) {
+        setLoading(true);
+        setLoadError(null);
+      }
+
+      // Peso estimates are optional: the dashboard never waits on, or fails with, the rate feed.
+      ratesService.get().then(setRates).catch(() => {});
 
       try {
-        const [p, n, r] = await Promise.all([
-          authService.me(),
-          safetyNetService.list(),
-          ratesService.get(),
-        ]);
+        const [p, n] = await Promise.all([authService.me(), safetyNetService.list()]);
         lastLoadedAt.current = Date.now();
 
         if (!p.hasWallet) {
@@ -61,10 +63,13 @@ export default function HomePage() {
 
         setProfile(p);
         setNets(n);
-        setRates(r);
+        setLoadError(null);
+        setRefreshError(false);
       } catch (err) {
         if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
-        setLoadError(loadErrorMessage(err));
+        // A failed background refresh keeps what's already on screen.
+        if (background) setRefreshError(true);
+        else setLoadError(loadErrorMessage(err));
       } finally {
         loadingRef.current = false;
         if (!background) setLoading(false);
@@ -104,11 +109,21 @@ export default function HomePage() {
   }
 
   const firstName = profile?.name.split(" ")[0] ?? "there";
+  const hasFunds = Number(profile?.balance ?? 0) > 0;
 
   return (
     <AppShell>
       {loadError ? (
         <LoadErrorBanner message={loadError} onRetry={() => void load()} />
+      ) : null}
+
+      {refreshError && !loadError ? (
+        <p className="mb-4 text-[14px] text-subtle" role="status">
+          Couldn&rsquo;t refresh just now — showing what you saw last.{" "}
+          <button type="button" className="min-h-11 font-semibold text-ink underline" onClick={() => void load({ background: true })}>
+            Try again
+          </button>
+        </p>
       ) : null}
 
       {!loadError ? (
@@ -119,8 +134,8 @@ export default function HomePage() {
               <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">{firstName}</h1>
             </div>
             {nets.length > 0 ? (
-              <Link href="/home/new" className="hidden sm:block">
-                <Button size="md">Set aside money</Button>
+              <Link href="/home/new" className={`hidden sm:inline-flex ${buttonClasses({ size: "md" })}`}>
+                Set aside money
               </Link>
             ) : null}
           </div>
@@ -138,6 +153,7 @@ export default function HomePage() {
                 don&rsquo;t check in.
                 {reminders.length > 1 ? ` (+${reminders.length - 1} more)` : ""}
               </p>
+              <p className="mt-2 text-[15px] font-semibold text-ink">Check in now →</p>
             </Link>
           ) : null}
 
@@ -152,9 +168,20 @@ export default function HomePage() {
                 Set aside money for someone you love. It stays yours — and reaches them if you ever
                 can&rsquo;t check in.
               </p>
-              <Link href="/home/new" className="mt-6 inline-block">
-                <Button>Set aside money</Button>
-              </Link>
+              {hasFunds ? (
+                <Link href="/home/new" className={`mt-6 ${buttonClasses()}`}>
+                  Set aside money
+                </Link>
+              ) : (
+                <>
+                  <p className="mx-auto mt-4 max-w-md text-[15px] text-body">
+                    First, add some funds to your wallet.
+                  </p>
+                  <Link href="/home/deposit" className={`mt-4 ${buttonClasses()}`}>
+                    Add funds
+                  </Link>
+                </>
+              )}
               <p className="mx-auto mt-6 max-w-md text-[15px] text-subtle">
                 Or send a gift every month from{" "}
                 <Link href="/home/tools/gift" className="font-semibold text-ink underline">
@@ -164,16 +191,19 @@ export default function HomePage() {
               </p>
             </div>
           ) : (
-            <div className="mt-8 grid gap-5 sm:grid-cols-2">
-              {nets.map((net) => (
-                <SafetyNetCard key={net.id} net={net} />
-              ))}
-            </div>
+            <section aria-labelledby="nets-heading" className="mt-8">
+              <h2 id="nets-heading" className="sr-only">Your safety nets</h2>
+              <div className="grid gap-5 sm:grid-cols-2">
+                {nets.map((net) => (
+                  <SafetyNetCard key={net.id} net={net} />
+                ))}
+              </div>
+            </section>
           )}
 
           {nets.length > 0 ? (
-            <Link href="/home/new" className="mt-6 block sm:hidden">
-              <Button fullWidth>Set aside money</Button>
+            <Link href="/home/new" className={`mt-6 sm:hidden ${buttonClasses({ fullWidth: true })}`}>
+              Set aside money
             </Link>
           ) : null}
         </>

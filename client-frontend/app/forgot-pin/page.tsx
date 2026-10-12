@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PinInput } from "@/components/ui/pin-input";
 import { Field } from "@/components/ui/field";
 import { authService } from "@/services/auth-service";
+import { loadErrorMessage } from "@/lib/api-errors";
 
 type Step = "phone" | "code" | "done";
 
@@ -21,7 +23,9 @@ export default function ForgotPinPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function sendCode() {
+  async function sendCode(event?: FormEvent) {
+    event?.preventDefault();
+    if (loading) return;
     setError(null);
     if (!phone) {
       setError("Please enter your mobile number.");
@@ -32,13 +36,15 @@ export default function ForgotPinPage() {
       await authService.forgotPin(phone);
       setStep("code");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(loadErrorMessage(err));
     } finally {
       setLoading(false);
     }
   }
 
-  async function reset() {
+  async function reset(event: FormEvent) {
+    event.preventDefault();
+    if (loading) return;
     setError(null);
     if (code.length !== 6) {
       setError("Please enter the 6-number code from your email.");
@@ -57,7 +63,7 @@ export default function ForgotPinPage() {
       await authService.resetPin(phone, code, newPin);
       setStep("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(loadErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -71,7 +77,7 @@ export default function ForgotPinPage() {
         </Link>
       </header>
 
-      <div className="container-page flex flex-1 items-center justify-center py-10">
+      <main className="container-page flex flex-1 items-center justify-center py-10">
         <div className="w-full max-w-md">
           {step === "phone" ? (
             <>
@@ -79,11 +85,12 @@ export default function ForgotPinPage() {
               <p className="mt-2 text-[17px] text-body">
                 No problem. We&rsquo;ll email a code to the address on your account.
               </p>
-              <div className="mt-8 space-y-5">
-                <Field label="Your mobile number" error={error ?? undefined}>
-                  {(id) => (
+              <form className="mt-8 space-y-5" onSubmit={sendCode} noValidate>
+                <Field label="Your mobile number" error={error}>
+                  {(id, control) => (
                     <Input
                       id={id}
+                      {...control}
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="0917 123 4567"
@@ -92,10 +99,10 @@ export default function ForgotPinPage() {
                     />
                   )}
                 </Field>
-                <Button fullWidth loading={loading} onClick={sendCode}>
+                <Button type="submit" fullWidth loading={loading}>
                   Email me a code
                 </Button>
-              </div>
+              </form>
             </>
           ) : null}
 
@@ -106,50 +113,39 @@ export default function ForgotPinPage() {
                 If that number has an account with a verified email, a 6-number code is on its way.
                 It works for 15 minutes.
               </p>
-              <div className="mt-8 space-y-5">
+              <form className="mt-8 space-y-5" onSubmit={reset} noValidate>
                 <Field label="The code from your email">
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="123456"
-                      inputMode="numeric"
-                      className="tracking-[0.4em]"
-                    />
+                  {(id, control) => (
+                    <PinInput id={id} {...control} value={code} onValueChange={setCode} autoComplete="one-time-code" placeholder="123456" />
                   )}
                 </Field>
                 <Field label="Your new 6-number PIN">
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={newPin}
-                      onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="••••••"
-                      inputMode="numeric"
-                      className="tracking-[0.5em]"
-                    />
+                  {(id, control) => (
+                    <PinInput id={id} {...control} value={newPin} onValueChange={setNewPin} autoComplete="new-password" placeholder="••••••" />
                   )}
                 </Field>
-                <Field label="Type your new PIN again" error={error ?? undefined}>
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={newPinConfirm}
-                      onChange={(e) => setNewPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="••••••"
-                      inputMode="numeric"
-                      className="tracking-[0.5em]"
-                    />
+                <Field label="Type your new PIN again">
+                  {(id, control) => (
+                    <PinInput id={id} {...control} value={newPinConfirm} onValueChange={setNewPinConfirm} autoComplete="new-password" placeholder="••••••" />
                   )}
                 </Field>
-                <Button fullWidth loading={loading} onClick={reset}>
+                {error ? (
+                  <p className="text-[15px] font-medium text-danger" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+                <Button type="submit" fullWidth loading={loading}>
                   Set my new PIN
                 </Button>
-                <button onClick={sendCode} className="w-full text-[15px] font-semibold text-subtle underline hover:text-ink">
+                <button
+                  type="button"
+                  onClick={() => void sendCode()}
+                  disabled={loading}
+                  className="min-h-11 w-full text-[15px] font-semibold text-subtle underline hover:text-ink"
+                >
                   Send a new code
                 </button>
-              </div>
+              </form>
             </>
           ) : null}
 
@@ -170,7 +166,7 @@ export default function ForgotPinPage() {
             </div>
           ) : null}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

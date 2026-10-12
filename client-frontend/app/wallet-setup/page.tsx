@@ -7,20 +7,19 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { authService } from "@/services/auth-service";
 import { walletService } from "@/services/wallet-service";
+import { loadErrorMessage } from "@/lib/api-errors";
+import { chunked } from "@/lib/format";
+import { useCopy } from "@/lib/use-copy";
+import { takeReturnTo } from "@/lib/return-to";
 
 type Step = "choose" | "creating" | "recovery" | "import" | "done";
-
-/** Groups a 56-char recovery key into readable 4-character chunks. */
-function chunked(key: string): string {
-  return key.replace(/(.{4})/g, "$1 ").trim();
-}
 
 export default function WalletSetupPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("choose");
   const [recoveryKey, setRecoveryKey] = useState("");
   const [savedConfirmed, setSavedConfirmed] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copy, copied, failed: copyFailed } = useCopy();
   const [importKey, setImportKey] = useState("");
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,12 +36,13 @@ export default function WalletSetupPage() {
       setRecoveryKey(result.recoveryKey);
       setStep("recovery");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't set up your wallet.");
+      setError(loadErrorMessage(err));
       setStep("choose");
     }
   }
 
   async function importWallet() {
+    if (importing) return;
     setError(null);
     if (!importKey.trim()) {
       setError("Please paste your recovery key.");
@@ -50,18 +50,13 @@ export default function WalletSetupPage() {
     }
     setImporting(true);
     try {
-      await walletService.import(importKey);
+      // Keys written down by hand are usually split into groups; spaces aren't part of the key.
+      await walletService.import(importKey.replace(/\s+/g, ""));
       setStep("done");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't import that wallet.");
+      setError(loadErrorMessage(err));
       setImporting(false);
     }
-  }
-
-  function copyKey() {
-    navigator.clipboard?.writeText(recoveryKey);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -70,7 +65,7 @@ export default function WalletSetupPage() {
         <Logo />
       </header>
 
-      <div className="container-page flex flex-1 items-start justify-center py-8 sm:items-center">
+      <main className="container-page flex flex-1 items-start justify-center py-8 sm:items-center">
         <div className="w-full max-w-lg">
           {/* Step 1: the two primary options */}
           {step === "choose" ? (
@@ -90,6 +85,7 @@ export default function WalletSetupPage() {
 
               <div className="mt-7 space-y-4">
                 <button
+                  type="button"
                   onClick={createWallet}
                   className="card block w-full p-6 text-left transition-shadow hover:shadow-lift"
                 >
@@ -109,6 +105,7 @@ export default function WalletSetupPage() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     setError(null);
                     setStep("import");
@@ -126,7 +123,7 @@ export default function WalletSetupPage() {
                         I already have a wallet
                       </span>
                       <span className="mt-1 block text-[15px] text-body">
-                        Bring in a wallet you made before, using its recovery key.
+                        Restore a wallet you made before, using its recovery key.
                       </span>
                     </span>
                   </span>
@@ -137,7 +134,7 @@ export default function WalletSetupPage() {
 
           {/* Creating: clear loading state */}
           {step === "creating" ? (
-            <div className="py-16 text-center">
+            <div className="py-16 text-center" role="status">
               <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-line border-t-ink" aria-hidden="true" />
               <h1 className="mt-6 font-display text-[26px] font-bold text-ink">
                 Setting up your wallet…
@@ -161,9 +158,14 @@ export default function WalletSetupPage() {
                 <p className="break-all rounded-xl bg-paper px-4 py-4 text-center font-mono text-[15px] leading-relaxed tracking-wide text-ink">
                   {chunked(recoveryKey)}
                 </p>
-                <Button size="md" variant="secondary" fullWidth className="mt-4" onClick={copyKey}>
-                  {copied ? "Copied" : "Copy key"}
+                <Button size="md" variant="secondary" fullWidth className="mt-4" onClick={() => void copy(recoveryKey, "key")}>
+                  {copied === "key" ? "Copied" : "Copy key"}
                 </Button>
+                {copyFailed ? (
+                  <p className="mt-2 text-[14px] text-danger" role="alert">
+                    Couldn&rsquo;t copy automatically — please write the key down.
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-5 rounded-xl bg-ink/5 p-4 text-[14px] text-body">
@@ -191,27 +193,29 @@ export default function WalletSetupPage() {
           {step === "import" ? (
             <>
               <button
+                type="button"
                 onClick={() => {
                   setError(null);
                   setStep("choose");
                 }}
-                className="text-[15px] font-semibold text-subtle hover:text-ink"
+                className="min-h-11 text-[15px] font-semibold text-subtle hover:text-ink"
               >
                 ← Back
               </button>
               <h1 className="mt-3 font-display text-[30px] font-bold text-ink sm:text-[34px]">
-                Bring in your wallet
+                Restore your wallet
               </h1>
               <p className="mt-2 text-[17px] text-body">
-                Paste the recovery key you saved when the wallet was made. It starts with{" "}
-                <span className="font-mono font-semibold">S</span> and has 56 characters.
+                Paste or type the recovery key you saved when the wallet was made. Spaces between
+                groups of letters are fine.
               </p>
 
               <div className="mt-6 space-y-5">
-                <Field label="Your recovery key" error={error ?? undefined}>
-                  {(id) => (
+                <Field label="Your recovery key" error={error}>
+                  {(id, control) => (
                     <textarea
                       id={id}
+                      {...control}
                       value={importKey}
                       onChange={(e) => setImportKey(e.target.value)}
                       placeholder="S…"
@@ -219,12 +223,12 @@ export default function WalletSetupPage() {
                       autoCapitalize="off"
                       autoCorrect="off"
                       spellCheck={false}
-                      className="w-full break-all rounded-xl border border-line bg-white px-4 py-3 font-mono text-[15px] text-ink placeholder:text-subtle/70 focus:border-ink"
+                      className="w-full break-all rounded-xl border border-line bg-white px-4 py-3 font-mono text-[15px] text-ink placeholder:text-subtle focus:border-ink"
                     />
                   )}
                 </Field>
                 <Button fullWidth loading={importing} onClick={importWallet}>
-                  Bring in my wallet
+                  Restore my wallet
                 </Button>
                 <p className="text-center text-[13px] text-subtle">
                   Your key is checked safely and never shown to anyone.
@@ -245,13 +249,13 @@ export default function WalletSetupPage() {
               <p className="mt-2 text-[17px] text-body">
                 You can now add funds and set money aside for the people you love.
               </p>
-              <Button className="mt-6" onClick={() => router.push("/home")}>
-                Go to my home
+              <Button className="mt-6" onClick={() => router.push(takeReturnTo())}>
+                Continue
               </Button>
             </div>
           ) : null}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

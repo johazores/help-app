@@ -26,7 +26,7 @@ export function BalanceCard({ balance, rates: ratesProp }: { balance: string; ra
       <p className="text-[15px] text-paper/70">Your available funds</p>
       <p className="mt-1 break-words font-display text-[clamp(30px,8vw,40px)] font-bold leading-none">{formatMoney(balance)}</p>
       {stable ? (
-        <p className="mt-1 text-[13px] text-paper/60">Stable value — held in USDC</p>
+        <p className="mt-1 text-[13px] text-paper/70">Stable value — follows the US dollar</p>
       ) : null}
       {php !== undefined ? (
         <p className="mt-2 text-[15px] text-marigold-soft">
@@ -36,7 +36,7 @@ export function BalanceCard({ balance, rates: ratesProp }: { balance: string; ra
       ) : null}
       <Link
         href="/home/deposit"
-        className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-marigold px-5 text-[15px] font-semibold text-ink hover:bg-marigold-deep hover:text-paper"
+        className="mt-5 inline-flex h-11 items-center justify-center rounded-xl bg-marigold px-5 text-[15px] font-semibold text-ink hover:bg-marigold-soft"
       >
         Add funds
       </Link>

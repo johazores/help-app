@@ -3,7 +3,7 @@ import type { ClaimInfo, RecoveredClaimLink } from "@/services/types";
 
 class ClaimService {
   async lookup(code: string): Promise<ClaimInfo> {
-    return apiClient.request<ClaimInfo>(`/claim/${code}`, { auth: false });
+    return apiClient.request<ClaimInfo>(`/claim/${encodeURIComponent(code)}`, { auth: false });
   }
 
   async claim(code: string): Promise<{
@@ -14,18 +14,18 @@ class ClaimService {
     guardUnlockAt?: string;
     txHash: string;
   }> {
-    return apiClient.request(`/claim/${code}`, {
+    return apiClient.request(`/claim/${encodeURIComponent(code)}`, {
       method: "POST",
       auth: false,
     });
   }
 
   async receiverCheckIn(code: string): Promise<{ guardUnlockAt: string; backupName: string; txHash: string }> {
-    return apiClient.request(`/claim/${code}/check-in`, { method: "POST", auth: false });
+    return apiClient.request(`/claim/${encodeURIComponent(code)}/check-in`, { method: "POST", auth: false });
   }
 
   async backupClaim(code: string): Promise<{ amount: string; forName: string; primaryName: string; txHash: string }> {
-    return apiClient.request(`/claim/${code}/backup`, { method: "POST", auth: false });
+    return apiClient.request(`/claim/${encodeURIComponent(code)}/backup`, { method: "POST", auth: false });
   }
 
   /** Finds claim links again using the loved one's number and the sender's number. */
@@ -38,7 +38,7 @@ class ClaimService {
   }
 
   async requestEarly(code: string): Promise<void> {
-    await apiClient.request(`/claim/${code}/request`, { method: "POST", auth: false });
+    await apiClient.request(`/claim/${encodeURIComponent(code)}/request`, { method: "POST", auth: false });
   }
 }
 

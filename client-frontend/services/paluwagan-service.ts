@@ -62,10 +62,10 @@ class PaluwaganClient {
     return apiClient.request(`/paluwagan/${id}/contribute`, { method: "POST", body: { pin } });
   }
   async invite(code: string): Promise<PaluwaganInvite> {
-    return apiClient.request(`/paluwagan/invite/${code}`, { auth: false });
+    return apiClient.request(`/paluwagan/invite/${encodeURIComponent(code)}`, { auth: false });
   }
   async join(code: string, pin: string): Promise<{ id: string }> {
-    return apiClient.request(`/paluwagan/invite/${code}/join`, { method: "POST", body: { pin } });
+    return apiClient.request(`/paluwagan/invite/${encodeURIComponent(code)}/join`, { method: "POST", body: { pin } });
   }
 }
 

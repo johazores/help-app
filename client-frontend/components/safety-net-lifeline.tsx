@@ -12,8 +12,9 @@ export const SafetyNetLifeline = memo(function SafetyNetLifeline({
   kind,
   unlockAt,
   lastCheckInAt,
-  busy,
-  streak,
+  checkingIn,
+  disabled,
+  checkIns,
   onCheckIn,
 }: {
   amount: string;
@@ -21,9 +22,9 @@ export const SafetyNetLifeline = memo(function SafetyNetLifeline({
   kind: string;
   unlockAt: string;
   lastCheckInAt: string;
-  forName: string;
-  busy: boolean;
-  streak: number;
+  checkingIn: boolean;
+  disabled: boolean;
+  checkIns: number;
   onCheckIn: () => void;
 }) {
   const [, setTick] = useState(0);
@@ -66,20 +67,20 @@ export const SafetyNetLifeline = memo(function SafetyNetLifeline({
           <LifelineRing
             progress={1}
             open
-            centerLabel={status === "RECEIVED" ? "Received" : "Closed"}
+            centerLabel={status === "CLOSED" ? "Taken back" : "Received"}
           />
         )}
       </div>
 
       {active && !openNow && !isGift ? (
         <div className="mt-8 w-full">
-          <Button fullWidth loading={busy} onClick={onCheckIn}>
+          <Button fullWidth loading={checkingIn} disabled={disabled} onClick={onCheckIn}>
             I&rsquo;m okay — check in
           </Button>
           <p className="mt-3 text-[14px] text-subtle">This keeps the money yours and resets the timer.</p>
-          {streak >= 2 ? (
-            <p className="mt-2 text-[14px] font-semibold text-sage">
-              {streak} check-ins in a row — your family is well looked after.
+          {checkIns >= 2 ? (
+            <p className="mt-2 text-[14px] font-semibold text-sage-ink">
+              {checkIns} check-ins so far — your family is well looked after.
             </p>
           ) : null}
         </div>
@@ -89,7 +90,7 @@ export const SafetyNetLifeline = memo(function SafetyNetLifeline({
       ) : null}
 
       {active && openNow ? (
-        <div className="mt-8 w-full rounded-xl bg-marigold/15 p-4 text-[15px] text-marigold-deep">
+        <div className="mt-8 w-full rounded-xl bg-marigold/15 p-4 text-[15px] text-ink">
           The check-in window has passed. Your family can now receive this money using the link below.
         </div>
       ) : null}

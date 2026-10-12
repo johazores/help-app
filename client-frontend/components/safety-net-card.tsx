@@ -3,7 +3,7 @@
 import { memo } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { countdown, formatMoney, statusLabel, windowProgress } from "@/lib/format";
+import { countdown, formatMoney, statusLabel, statusTone, windowProgress } from "@/lib/format";
 import type { SafetyNet } from "@/services/types";
 
 export const SafetyNetCard = memo(function SafetyNetCard({ net }: { net: SafetyNet }) {
@@ -11,16 +11,7 @@ export const SafetyNetCard = memo(function SafetyNetCard({ net }: { net: SafetyN
   const { text } = countdown(net.unlockAt);
   const open = net.status === "ACTIVE" && Date.parse(net.unlockAt) <= Date.now();
 
-  const tone =
-    net.status === "RECEIVED" || net.status === "BACKUP_RECEIVED"
-      ? "received"
-      : net.status === "GUARDED"
-      ? "active"
-      : net.status === "CLOSED"
-      ? "closed"
-      : open
-      ? "open"
-      : "active";
+  const tone = statusTone(net.status, open);
 
   return (
     <Link
@@ -28,9 +19,9 @@ export const SafetyNetCard = memo(function SafetyNetCard({ net }: { net: SafetyN
       className="card block p-6 transition-shadow hover:shadow-lift focus-visible:shadow-lift"
     >
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <p className="text-[15px] text-subtle">For {net.forName}</p>
-          <h3 className="mt-0.5 text-[20px] font-bold text-ink">{net.label}</h3>
+          <h3 className="mt-0.5 break-words text-[20px] font-bold text-ink">{net.label}</h3>
         </div>
         <Badge tone={tone}>{statusLabel(net.status, open)}</Badge>
       </div>
@@ -65,6 +56,8 @@ export const SafetyNetCard = memo(function SafetyNetCard({ net }: { net: SafetyN
             ? `${net.forName} has this — ${net.backupName ?? "backup"} is next if they can't check in.`
             : net.status === "BACKUP_RECEIVED"
             ? `${net.backupName ?? "Backup"} received this after ${net.forName} couldn't check in.`
+            : net.status === "OPENED"
+            ? `Open for ${net.forName} to receive.`
             : "You took this back."}
         </p>
       )}

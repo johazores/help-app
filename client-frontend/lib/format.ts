@@ -52,11 +52,55 @@ export function windowProgress(lastCheckInIso: string, unlockIso: string): numbe
 
 export function statusLabel(status: SafetyNetStatus, isOpen: boolean): string {
   if (status === "RECEIVED") return "Received";
-  if (status === "GUARDED") return "Received — guarded";
+  if (status === "GUARDED") return "Received — backup set";
   if (status === "BACKUP_RECEIVED") return "Received by backup";
   if (status === "CLOSED") return "Taken back";
-  if (isOpen) return "Open to family";
-  return "Watching over";
+  if (status === "OPENED" || isOpen) return "Open to family";
+  return "Protected";
+}
+
+export type StatusTone = "active" | "open" | "received" | "closed" | "neutral";
+
+export function statusTone(status: SafetyNetStatus, isOpen: boolean): StatusTone {
+  if (status === "RECEIVED" || status === "GUARDED" || status === "BACKUP_RECEIVED") return "received";
+  if (status === "CLOSED") return "closed";
+  if (status === "OPENED" || isOpen) return "open";
+  return "active";
+}
+
+// ---- Check-in schedule ------------------------------------------------------
+
+export interface CheckInInterval {
+  minutes: number;
+  label: string;
+  phrase: string;
+  note?: string;
+}
+
+/** Choices the API accepts; "every minute" exists to try the full flow quickly. */
+export const CHECK_IN_INTERVALS: CheckInInterval[] = [
+  { minutes: 1, label: "Every minute", phrase: "every minute", note: "For trying it out" },
+  { minutes: 10080, label: "Every week", phrase: "every week" },
+  { minutes: 43200, label: "Every month", phrase: "every month" },
+  { minutes: 129600, label: "Every 3 months", phrase: "every 3 months" },
+];
+
+export function intervalPhrase(minutes: number): string {
+  return CHECK_IN_INTERVALS.find((i) => i.minutes === minutes)?.phrase ?? "on schedule";
+}
+
+// ---- Inputs -----------------------------------------------------------------
+
+/** Keeps digits and a single decimal point, with at most seven decimals. */
+export function decimalInput(value: string): string {
+  const cleaned = value.replace(/[^\d.]/g, "");
+  const [whole = "", ...decimals] = cleaned.split(".");
+  return decimals.length > 0 ? `${whole}.${decimals.join("").slice(0, 7)}` : whole;
+}
+
+/** Splits a long key into groups of four so it can be read aloud or copied by hand. */
+export function chunked(value: string, size = 4): string {
+  return value.match(new RegExp(`.{1,${size}}`, "g"))?.join(" ") ?? value;
 }
 
 // ---- Currency / rates -------------------------------------------------------
@@ -72,7 +116,7 @@ export interface CurrencyMeta {
 export const CURRENCIES: CurrencyMeta[] = [
   { code: "PHP", label: "Philippine peso", symbol: "\u20B1", locale: "en-PH" },
   { code: "USD", label: "US dollar", symbol: "$", locale: "en-US" },
-  { code: "USDC", label: "USD Coin", symbol: "$", locale: "en-US" },
+  { code: "USDC", label: "Digital dollar", symbol: "$", locale: "en-US" },
   { code: "EUR", label: "Euro", symbol: "\u20AC", locale: "en-IE" },
   { code: "SAR", label: "Saudi riyal", symbol: "SAR ", locale: "en" },
   { code: "AED", label: "UAE dirham", symbol: "AED ", locale: "en" },
@@ -91,11 +135,6 @@ export function convertFromHeld(amount: string | number, rate: number): number {
   return n * rate;
 }
 
-/** @deprecated Use convertFromHeld — kept for existing call sites. */
-export function convertFromXlm(xlm: string | number, rate: number): number {
-  return convertFromHeld(xlm, rate);
-}
-
 export function formatFiat(amount: number, code: string): string {
   const meta = currencyMeta(code);
   const value = amount.toLocaleString(meta.locale, {
@@ -107,9 +146,6 @@ export function formatFiat(amount: number, code: string): string {
 
 // ---- Transactions -----------------------------------------------------------
 
-// Stellar base network fee: 100 stroops = 0.00001 XLM per operation.
-export const NETWORK_FEE_XLM = 0.00001;
-
 /** A stable, human-friendly reference id derived from the transaction. */
 export function referenceId(seed: string | null | undefined, fallback: string): string {
   const base = (seed && seed.length >= 8 ? seed : fallback).replace(/[^a-zA-Z0-9]/g, "");
@@ -119,17 +155,16 @@ export function referenceId(seed: string | null | undefined, fallback: string): 
 
 export interface TxStatusMeta {
   label: string;
-  tone: "active" | "open" | "received" | "closed" | "neutral";
-  meaning: string;
+  tone: StatusTone;
 }
 
-// How each recorded action maps to a plain-language status + meaning.
+// How each recorded action maps to a plain-language status.
 export const TX_STATUS: Record<string, TxStatusMeta> = {
-  CREATED: { label: "Completed", tone: "received", meaning: "Money was set aside successfully." },
-  CHECKED_IN: { label: "Completed", tone: "received", meaning: "Your check-in was recorded." },
-  OPENED_TO_FAMILY: { label: "Open", tone: "open", meaning: "Now available for your family to receive." },
-  RECEIVED: { label: "Completed", tone: "received", meaning: "Your family received the money." },
-  RECEIVER_CHECKED_IN: { label: "Completed", tone: "received", meaning: "The receiver checked in; the money stays theirs." },
-  BACKUP_RECEIVED: { label: "Completed", tone: "received", meaning: "The backup person received the money." },
-  CLOSED: { label: "Completed", tone: "received", meaning: "The money was returned to you." },
+  CREATED: { label: "Completed", tone: "received" },
+  CHECKED_IN: { label: "Completed", tone: "received" },
+  OPENED_TO_FAMILY: { label: "Open", tone: "open" },
+  RECEIVED: { label: "Completed", tone: "received" },
+  RECEIVER_CHECKED_IN: { label: "Completed", tone: "received" },
+  BACKUP_RECEIVED: { label: "Completed", tone: "received" },
+  CLOSED: { label: "Completed", tone: "received" },
 };

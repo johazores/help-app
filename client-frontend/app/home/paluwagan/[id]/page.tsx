@@ -1,16 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PinInput } from "@/components/ui/pin-input";
 import { Badge } from "@/components/ui/badge";
-import { Spinner } from "@/components/ui/spinner";
+import { Dialog } from "@/components/ui/dialog";
+import { PageSpinner } from "@/components/ui/spinner";
+import { LoadErrorBanner } from "@/components/load-error-banner";
 import { authService } from "@/services/auth-service";
 import { paluwaganClient, type PaluwaganDetail } from "@/services/paluwagan-service";
+import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
 import { formatDateTime, formatMoney } from "@/lib/format";
+import { useCopy } from "@/lib/use-copy";
 
 export default function PaluwaganGroupPage() {
   const router = useRouter();
@@ -21,53 +25,87 @@ export default function PaluwaganGroupPage() {
   const [action, setAction] = useState<"start" | "pay" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const { copy, copied, failed: copyFailed } = useCopy();
 
-  const load = useCallback(() => paluwaganClient.detail(id).then(setGroup).catch(() => router.replace("/home/paluwagan")), [id, router]);
+  const load = useCallback(async () => {
+    try {
+      setGroup(await paluwaganClient.detail(id));
+      setLoadError(null);
+    } catch (err) {
+      if (handleProtectedLoadError(err, router, () => authService.signOut()) === "error") {
+        setLoadError(loadErrorMessage(err));
+      }
+    }
+  }, [id, router]);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
-    load();
+    void load();
   }, [load, router]);
 
-  async function confirm() {
-    if (!action) return;
+  function closeAction() {
+    if (busy) return;
+    setAction(null);
+    setPin("");
+    setError(null);
+  }
+
+  async function confirm(event: FormEvent) {
+    event.preventDefault();
+    if (!action || busy) return;
+    if (pin.length !== 6) return setError("Please enter your 6-number PIN.");
     setBusy(true);
     setError(null);
     try {
       if (action === "start") await paluwaganClient.start(id, pin);
       else await paluwaganClient.contribute(id, pin);
-      setAction(null);
-      setPin("");
-      await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "That didn't work.");
-    } finally {
+      setError(loadErrorMessage(err));
       setBusy(false);
+      return;
     }
+    setNotice(action === "start" ? "The group has started. Round 1 is collecting now." : "Your share was sent.");
+    setAction(null);
+    setPin("");
+    setBusy(false);
+    await load();
   }
 
   if (!group) {
     return (
       <AppShell>
-        <div className="flex justify-center py-20 text-ink"><Spinner className="h-7 w-7" /></div>
+        {loadError ? (
+          <>
+            <LoadErrorBanner message={loadError} onRetry={() => void load()} />
+            <Link href="/home/paluwagan" className="mt-4 inline-flex min-h-11 items-center font-semibold text-ink underline">
+              ← Paluwagan
+            </Link>
+          </>
+        ) : (
+          <PageSpinner />
+        )}
       </AppShell>
     );
   }
 
   const current = group.cycles.find((c) => c.status === "COLLECTING") ?? null;
-  const iPaid = current?.paid.find((p) => p.isMe)?.status === "PAID";
+  const myShare = current?.paid.find((p) => p.isMe)?.status;
+  const iPaid = myShare === "PAID";
   const paidCount = current ? current.paid.filter((p) => p.status === "PAID").length : 0;
   const inviteUrl = typeof window !== "undefined" ? `${window.location.origin}/paluwagan/invite/${group.inviteCode}` : "";
   const pot = Number(group.amount) * (group.memberCount - 1);
 
   return (
     <AppShell>
-      <Link href="/home/paluwagan" className="text-[15px] font-semibold text-subtle hover:text-ink">← Paluwagan</Link>
-      <div className="mt-3 flex items-start justify-between gap-3">
+      <Link href="/home/paluwagan" className="inline-flex min-h-11 items-center text-[15px] font-semibold text-subtle hover:text-ink">
+        ← Paluwagan
+      </Link>
+      <div className="mt-1 flex items-start justify-between gap-3">
         <h1 className="min-w-0 break-words font-display text-[28px] font-bold leading-tight text-ink sm:text-[34px]">{group.name}</h1>
         <Badge tone={group.status === "ACTIVE" ? "active" : group.status === "COMPLETED" ? "received" : "open"}>
           {group.status === "DRAFT" ? "Gathering" : group.status === "ACTIVE" ? "Running" : "Finished"}
@@ -76,6 +114,12 @@ export default function PaluwaganGroupPage() {
       <p className="mt-1 text-[15px] text-subtle">
         {formatMoney(group.amount)} per member each round · {group.memberCount} members
       </p>
+
+      <div aria-live="polite">
+        {notice ? (
+          <p className="mt-4 max-w-3xl rounded-xl bg-sage/15 px-4 py-3 text-[15px] font-semibold text-ink">{notice}</p>
+        ) : null}
+      </div>
 
       <div className="mt-6 grid max-w-3xl gap-5 lg:grid-cols-2">
         {/* Current round / draft actions */}
@@ -86,10 +130,15 @@ export default function PaluwaganGroupPage() {
               <p className="mt-1 text-[15px] text-body">Share this link. Each person joins with their own Sagip account.</p>
               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <code className="min-w-0 flex-1 break-all rounded-xl border border-line bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink">{inviteUrl}</code>
-                <Button size="md" variant="secondary" onClick={() => { navigator.clipboard?.writeText(inviteUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
-                  {copied ? "Copied" : "Copy"}
+                <Button size="md" variant="secondary" onClick={() => void copy(inviteUrl, "invite")}>
+                  {copied === "invite" ? "Copied" : "Copy"}
                 </Button>
               </div>
+              {copyFailed ? (
+                <p className="mt-2 text-[14px] text-danger" role="alert">
+                  Couldn&rsquo;t copy automatically — press and hold the link to copy it.
+                </p>
+              ) : null}
               {group.iAmOwner ? (
                 <div className="mt-5 border-t border-line pt-4">
                   <p className="text-[14px] text-body">
@@ -120,6 +169,10 @@ export default function PaluwaganGroupPage() {
               {!current.recipientIsMe ? (
                 iPaid ? (
                   <p className="mt-4 rounded-xl bg-sage/15 px-4 py-3 text-[15px] font-semibold text-ink">Your share is in for this round ✓</p>
+                ) : myShare === "PAYING" ? (
+                  <p className="mt-4 rounded-xl bg-marigold/15 px-4 py-3 text-[15px] font-semibold text-ink">
+                    Your share is going through. Refresh in a moment.
+                  </p>
                 ) : (
                   <Button fullWidth className="mt-4" onClick={() => setAction("pay")}>
                     Send my {formatMoney(group.amount)} share
@@ -146,7 +199,7 @@ export default function PaluwaganGroupPage() {
                 <li key={m.position} className="flex items-center justify-between py-2.5">
                   <span className="text-[16px] font-semibold text-ink">
                     {m.position}. {m.name}
-                    {m.isMe ? <span className="ml-2 text-[12px] font-bold text-sage">You</span> : null}
+                    {m.isMe ? <span className="ml-2 text-[12px] font-bold text-sage-ink">You</span> : null}
                     {m.isOwner ? <span className="ml-2 text-[12px] font-bold text-subtle">Owner</span> : null}
                   </span>
                 </li>
@@ -180,27 +233,35 @@ export default function PaluwaganGroupPage() {
         </div>
       </div>
 
-      {/* PIN confirm sheet */}
-      {action ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 sm:items-center">
-          <div className="card w-full max-w-md p-6">
-            <h2 className="font-display text-[22px] font-bold text-ink">
-              {action === "start" ? "Start the group?" : "Send your share?"}
-            </h2>
-            <p className="mt-2 text-[15px] text-body">
-              {action === "start"
-                ? "The rules lock and round 1 begins. This can't be undone."
-                : `${formatMoney(group.amount)} goes straight to ${current?.recipientName}. This can't be undone.`}
-            </p>
-            <Input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Your 6-number PIN" inputMode="numeric" className="mt-4 tracking-[0.5em]" autoFocus />
-            {error ? <p className="mt-3 text-[15px] font-medium text-danger" role="alert">{error}</p> : null}
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row-reverse">
-              <Button fullWidth loading={busy} onClick={confirm}>Confirm</Button>
-              <Button fullWidth variant="ghost" onClick={() => { setAction(null); setError(null); }}>Cancel</Button>
-            </div>
+      <Dialog
+        open={action !== null}
+        onClose={closeAction}
+        title={action === "start" ? "Start the group?" : "Send your share?"}
+        description={
+          action === "start"
+            ? "The rules lock and round 1 begins. This can't be undone."
+            : `${formatMoney(group.amount)} goes straight to ${current?.recipientName ?? "this round's member"}. This can't be undone.`
+        }
+      >
+        <form onSubmit={confirm} noValidate>
+          <label htmlFor="paluwagan-pin" className="field-label">Your 6-number PIN</label>
+          <PinInput
+            id="paluwagan-pin"
+            value={pin}
+            onValueChange={setPin}
+            autoComplete="current-password"
+            placeholder="••••••"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "paluwagan-error" : undefined}
+            autoFocus
+          />
+          {error ? <p id="paluwagan-error" className="mt-3 text-[15px] font-medium text-danger" role="alert">{error}</p> : null}
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row-reverse">
+            <Button type="submit" fullWidth loading={busy}>Confirm</Button>
+            <Button fullWidth variant="ghost" disabled={busy} onClick={closeAction}>Cancel</Button>
           </div>
-        </div>
-      ) : null}
+        </form>
+      </Dialog>
     </AppShell>
   );
 }

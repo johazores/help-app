@@ -7,6 +7,7 @@ import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { claimService } from "@/services/claim-service";
+import { loadErrorMessage } from "@/lib/api-errors";
 import { countdown, formatDate, formatDateTime, formatMoney, referenceId } from "@/lib/format";
 import type { ClaimInfo } from "@/services/types";
 
@@ -49,6 +50,7 @@ export default function ClaimPage() {
   const [backupClaiming, setBackupClaiming] = useState(false);
   const [requesting, setRequesting] = useState(false);
   const [requested, setRequested] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -62,16 +64,23 @@ export default function ClaimPage() {
   }, [code]);
 
   async function requestEarly() {
+    if (requesting) return;
     setRequesting(true);
+    setRequestError(null);
     try {
       await claimService.requestEarly(code);
       setRequested(true);
-    } catch {
-      // Quietly ignore; the reassurance copy still applies.
+    } catch (err) {
+      setRequestError(loadErrorMessage(err));
     } finally {
       setRequesting(false);
     }
   }
+
+  /** Background refresh after an action: its failure must not undo a confirmed result. */
+  const refreshQuietly = useCallback(() => {
+    refresh().catch(() => {});
+  }, [refresh]);
 
   useEffect(() => {
     refresh().catch((err) => {
@@ -103,46 +112,56 @@ export default function ClaimPage() {
   }, [screen]);
 
   async function receive() {
+    if (claiming) return;
     setClaiming(true);
     setError(null);
     try {
       const result = await claimService.claim(code);
       setReceivedAmount(result.amount);
       setReceivedRef(referenceId(result.txHash, code));
-      await refresh();
+      setInfo((current) =>
+        current && result.guarded
+          ? { ...current, status: "GUARDED", guardUnlockAt: result.guardUnlockAt ?? null, guardIsOpen: false }
+          : current,
+      );
       setScreen(result.guarded ? "guarded" : "received");
+      refreshQuietly();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't receive the money.");
+      setError(loadErrorMessage(err));
     } finally {
       setClaiming(false);
     }
   }
 
   async function receiverCheckIn() {
+    if (checkingIn) return;
     setCheckingIn(true);
     setError(null);
     setCheckedInUntil(null);
     try {
       const result = await claimService.receiverCheckIn(code);
-      await refresh();
       setCheckedInUntil(result.guardUnlockAt);
+      setInfo((current) => (current ? { ...current, guardUnlockAt: result.guardUnlockAt, guardIsOpen: false } : current));
+      refreshQuietly();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't check in. Please try again.");
+      setError(loadErrorMessage(err));
     } finally {
       setCheckingIn(false);
     }
   }
 
   async function backupReceive() {
+    if (backupClaiming) return;
     setBackupClaiming(true);
     setError(null);
     try {
       const result = await claimService.backupClaim(code);
       setReceivedAmount(result.amount);
       setReceivedRef(referenceId(result.txHash, code));
-      await refresh();
+      setScreen("backup-received");
+      refreshQuietly();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't receive the money.");
+      setError(loadErrorMessage(err));
     } finally {
       setBackupClaiming(false);
     }
@@ -155,15 +174,18 @@ export default function ClaimPage() {
     <div className="flex min-h-screen flex-col bg-paper">
       <header className="container-page flex h-16 items-center justify-between">
         <Logo />
-        <Link href="/claim/recover" className="text-[14px] font-semibold text-subtle hover:text-ink">
+        <Link
+          href="/claim/recover"
+          className="inline-flex min-h-11 items-center text-[14px] font-semibold text-subtle hover:text-ink"
+        >
           Lost your link?
         </Link>
       </header>
 
-      <div className="container-page flex flex-1 items-start justify-center py-6 sm:items-center sm:py-10">
+      <main className="container-page flex flex-1 items-start justify-center py-6 sm:items-center sm:py-10">
         <div className="w-full max-w-md">
           {screen === "loading" ? (
-            <div className="py-16 text-center">
+            <div className="py-16 text-center" role="status">
               <Spinner className="mx-auto h-8 w-8 text-ink" />
               <p className="mt-4 text-[17px] text-body">Opening your link…</p>
             </div>
@@ -194,12 +216,20 @@ export default function ClaimPage() {
                 </p>
                 <div className="mt-6 rounded-xl bg-ink/5 p-5 text-left text-[16px] leading-relaxed text-body">
                   <p className="font-semibold text-ink">You don&rsquo;t need to do anything right now.</p>
-                  <p className="mt-2">
-                    {info.fromName} is keeping this money safe by checking in regularly. If they ever
-                    can&rsquo;t — starting{" "}
-                    <span className="font-semibold text-ink">{formatDate(info.unlockAt)}</span> — it
-                    opens to you, and this page will let you receive it.
-                  </p>
+                  {info.kind === "GIFT" ? (
+                    <p className="mt-2">
+                      This gift opens for you on{" "}
+                      <span className="font-semibold text-ink">{formatDate(info.unlockAt)}</span>. Open
+                      this link again on that day to receive it.
+                    </p>
+                  ) : (
+                    <p className="mt-2">
+                      {info.fromName} is keeping this money safe by checking in regularly. If they ever
+                      can&rsquo;t — starting{" "}
+                      <span className="font-semibold text-ink">{formatDate(info.unlockAt)}</span> — it
+                      opens to you, and this page will let you receive it.
+                    </p>
+                  )}
                 </div>
               </div>
               {info.kind !== "GIFT" ? (
@@ -217,6 +247,11 @@ export default function ClaimPage() {
                       <Button size="md" variant="ghost" className="mt-3" loading={requesting} onClick={requestEarly}>
                         Ask to open it now
                       </Button>
+                      {requestError ? (
+                        <p className="mt-3 text-[15px] font-medium text-danger" role="alert">
+                          We couldn&rsquo;t send your request. {requestError}
+                        </p>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -288,7 +323,7 @@ export default function ClaimPage() {
                     ) : null}
                   </p>
                   {guardRemaining && !info.guardIsOpen ? (
-                    <p className="mt-3 text-[14px] font-semibold text-sage">
+                    <p className="mt-3 text-[14px] font-semibold text-sage-ink">
                       Time left to check in: {guardRemaining}
                     </p>
                   ) : null}
@@ -299,12 +334,12 @@ export default function ClaimPage() {
                   ) : null}
                 </div>
                 <div className="mt-6">
-                  <Button fullWidth loading={checkingIn} onClick={receiverCheckIn}>
+                  <Button fullWidth loading={checkingIn} disabled={backupClaiming} onClick={receiverCheckIn}>
                     I&rsquo;m okay — check in
                   </Button>
                 </div>
                 {checkedInUntil ? (
-                  <p className="mt-4 rounded-xl bg-sage/10 px-4 py-3 text-[15px] font-medium text-sage" role="status">
+                  <p className="mt-4 rounded-xl bg-sage/10 px-4 py-3 text-[15px] font-medium text-sage-ink" role="status">
                     You&rsquo;re checked in — this money stays in your hands. Check in again before{" "}
                     {formatDateTime(checkedInUntil)}.
                   </p>
@@ -331,7 +366,7 @@ export default function ClaimPage() {
                     act. If you&rsquo;re {info.backupName}, you can receive this money now.
                   </p>
                   <div className="mt-4">
-                    <Button fullWidth loading={backupClaiming} onClick={backupReceive}>
+                    <Button fullWidth loading={backupClaiming} disabled={checkingIn} onClick={backupReceive}>
                       Receive {formatMoney(info.amount)}
                     </Button>
                   </div>
@@ -363,8 +398,8 @@ export default function ClaimPage() {
                   </p>
                 ) : null}
                 <p className="mt-5 rounded-xl border border-line bg-paper/60 px-4 py-3 text-[14px] leading-relaxed text-body">
-                  <span className="font-semibold text-ink">Move it to your pocket</span> — GCash, Maya, and
-                  bank transfer are coming soon. Your money is safe here under your name until then.
+                  <span className="font-semibold text-ink">Cashing out</span> to GCash, Maya, or a bank
+                  is coming soon. Your money stays here under your name until then.
                 </p>
               </div>
             </>
@@ -405,7 +440,12 @@ export default function ClaimPage() {
             </div>
           ) : null}
         </div>
-      </div>
+      </main>
+
+      <footer className="container-page pb-8 pt-2 text-center text-[13px] leading-relaxed text-subtle">
+        Sagip helps families set money aside for each other. This page shows money someone set
+        aside for you — no account or app needed. This is a preview that uses test money.
+      </footer>
     </div>
   );
 }

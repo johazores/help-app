@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PinInput } from "@/components/ui/pin-input";
 import { Field } from "@/components/ui/field";
 import { authService } from "@/services/auth-service";
+import { loadErrorMessage } from "@/lib/api-errors";
+import { takeReturnTo } from "@/lib/return-to";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -16,18 +19,20 @@ export default function SignInPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function submit() {
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (loading) return;
     setError(null);
-    if (!phone || pin.length !== 6) {
+    if (!phone.trim() || pin.length !== 6) {
       setError("Please enter your mobile number and 6-number PIN.");
       return;
     }
     setLoading(true);
     try {
       await authService.signIn({ phone, pin });
-      router.push("/home");
+      router.push(takeReturnTo());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(loadErrorMessage(err));
       setLoading(false);
     }
   }
@@ -40,58 +45,66 @@ export default function SignInPage() {
         </Link>
       </header>
 
-      <div className="container-page flex flex-1 items-center justify-center py-10">
+      <main className="container-page flex flex-1 items-center justify-center py-10">
         <div className="w-full max-w-md">
           <h1 className="font-display text-[32px] font-bold text-ink">Welcome back</h1>
           <p className="mt-2 text-[17px] text-body">Sign in to check in on your family.</p>
 
-          <div className="mt-8 space-y-5">
+          <form className="mt-8 space-y-5" onSubmit={submit} noValidate>
             <Field label="Mobile number">
-              {(id) => (
+              {(id, control) => (
                 <Input
                   id={id}
+                  {...control}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="0917 123 4567"
                   inputMode="tel"
-                  autoComplete="tel"
+                  autoComplete="username"
+                  required
                 />
               )}
             </Field>
 
-            <Field label="Your 6-number PIN" error={error ?? undefined}>
-              {(id) => (
-                <Input
+            <Field label="Your 6-number PIN">
+              {(id, control) => (
+                <PinInput
                   id={id}
+                  {...control}
                   value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onValueChange={setPin}
+                  autoComplete="current-password"
                   placeholder="••••••"
-                  inputMode="numeric"
-                  className="tracking-[0.5em]"
-                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                  required
                 />
               )}
             </Field>
 
-            <Button fullWidth loading={loading} onClick={submit}>
+            {error ? (
+              <p className="text-[15px] font-medium text-danger" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <Button type="submit" fullWidth loading={loading}>
               Sign in
             </Button>
 
             <p className="text-center">
-              <Link href="/forgot-pin" className="text-[15px] font-semibold text-subtle underline hover:text-ink">
+              <Link href="/forgot-pin" className="inline-flex min-h-11 items-center text-[15px] font-semibold text-subtle underline hover:text-ink">
                 Forgot your PIN?
               </Link>
             </p>
-          </div>
+          </form>
 
-          <p className="mt-6 text-center text-[16px] text-subtle">
+          <p className="mt-4 text-center text-[16px] text-subtle">
             New here?{" "}
             <Link href="/get-started" className="font-semibold text-ink underline">
               Create an account
             </Link>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

@@ -128,7 +128,7 @@ export default function AdminPage() {
                     href={`${explorer.explorerTxUrl}${t.txHash}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="shrink-0 font-mono text-[13px] font-semibold text-sage hover:text-ink"
+                    className="shrink-0 font-mono text-[13px] font-semibold text-sage-ink hover:text-ink"
                   >
                     {t.txHash.slice(0, 6)}…{t.txHash.slice(-6)} ↗
                   </a>
@@ -177,7 +177,7 @@ export default function AdminPage() {
                   href={`${explorer.explorerAccountUrl}${u.publicKey}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="shrink-0 font-mono text-[13px] font-semibold text-sage hover:text-ink"
+                  className="shrink-0 font-mono text-[13px] font-semibold text-sage-ink hover:text-ink"
                 >
                   {shortKey(u.publicKey)} ↗
                 </a>

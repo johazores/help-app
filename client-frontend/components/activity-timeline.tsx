@@ -58,7 +58,7 @@ export function ActivityTimeline({
                   href={`${explorerTxUrl}${a.txHash}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-sage hover:text-ink"
+                  className="mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-sage-ink hover:text-ink"
                 >
                   View verified record ↗
                 </a>

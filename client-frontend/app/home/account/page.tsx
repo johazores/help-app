@@ -8,14 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
-import { Spinner } from "@/components/ui/spinner";
+import { Dialog } from "@/components/ui/dialog";
+import { PinInput } from "@/components/ui/pin-input";
+import { PageSpinner } from "@/components/ui/spinner";
+import { NoticeBanner } from "@/components/notice-banner";
 import { authService } from "@/services/auth-service";
 import { accountService } from "@/services/account-service";
 import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
 import { LoadErrorBanner } from "@/components/load-error-banner";
 import { DataUrlImage } from "@/components/ui/data-url-image";
 import { formatDateTime } from "@/lib/format";
+import { useNotice } from "@/lib/use-notice";
 import type { Profile, SessionInfo } from "@/services/types";
+
+type Section = "profile" | "email" | "pin" | "sessions";
 
 /** Reads a file, resizes it to a small square, returns a compact JPEG data URL. */
 async function fileToAvatar(file: File): Promise<string> {
@@ -60,13 +66,17 @@ export default function AccountPage() {
   const [pinNew2, setPinNew2] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [sessionBusy, setSessionBusy] = useState<string | null>(null);
+  const [confirmSignOutOthers, setConfirmSignOutOthers] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-
-  function say(text: string, bad = false) {
-    setNotice({ text, bad });
-    setTimeout(() => setNotice(null), 5000);
-  }
+  // Each message appears inside the section that caused it, next to the button tapped.
+  const [noticeFor, setNoticeFor] = useState<Section>("profile");
+  const { notice, say: sayNotice } = useNotice();
+  const say = (section: Section, text: string, bad = false) => {
+    setNoticeFor(section);
+    sayNotice(text, bad);
+  };
+  const noticeIn = (section: Section) => (noticeFor === section ? <NoticeBanner notice={notice} /> : null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -93,14 +103,14 @@ export default function AccountPage() {
   }, [router, load]);
 
   async function saveName() {
-    if (name.trim().length < 2) return say("Please enter your name.", true);
+    if (name.trim().length < 2) return say("profile", "Please enter your name.", true);
     setSavingName(true);
     try {
       await accountService.updateName(name);
       setProfile((p) => (p ? { ...p, name: name.trim() } : p));
-      say("Your name is updated.");
+      say("profile", "Your name is updated.");
     } catch (err) {
-      say(err instanceof Error ? err.message : "Couldn't save.", true);
+      say("profile", loadErrorMessage(err), true);
     } finally {
       setSavingName(false);
     }
@@ -113,9 +123,9 @@ export default function AccountPage() {
       const data = await fileToAvatar(file);
       await accountService.updateAvatar(data);
       setProfile((p) => (p ? { ...p, avatar: data } : p));
-      say("Photo updated.");
+      say("profile", "Photo updated.");
     } catch (err) {
-      say(err instanceof Error ? err.message : "Couldn't update the photo.", true);
+      say("profile", loadErrorMessage(err), true);
     } finally {
       setAvatarBusy(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -127,46 +137,49 @@ export default function AccountPage() {
     try {
       await accountService.updateAvatar(null);
       setProfile((p) => (p ? { ...p, avatar: null } : p));
-      say("Photo removed.");
-    } catch {
-      say("Couldn't remove the photo.", true);
+      say("profile", "Photo removed.");
+    } catch (err) {
+      say("profile", loadErrorMessage(err), true);
     } finally {
       setAvatarBusy(false);
     }
   }
 
   async function sendEmailCode() {
-    if (!emailInput) return say("Please enter an email address.", true);
+    if (!emailInput) return say("email", "Please enter an email address.", true);
     setEmailBusy(true);
     try {
       const res = await accountService.requestEmail(emailInput);
       setEmailStep("code");
-      say(`We emailed a code to ${res.sentTo}.`);
+      say("email", `We emailed a code to ${res.sentTo}.`);
     } catch (err) {
-      say(err instanceof Error ? err.message : "Couldn't send the code.", true);
+      say("email", loadErrorMessage(err), true);
     } finally {
       setEmailBusy(false);
     }
   }
 
   async function confirmEmailCode() {
-    if (emailCode.length !== 6) return say("Please enter the 6-number code.", true);
+    if (emailCode.length !== 6) return say("email", "Please enter the 6-number code.", true);
     setEmailBusy(true);
     try {
       const res = await accountService.confirmEmail(emailCode);
       setProfile((p) => (p ? { ...p, email: res.email, emailVerified: true } : p));
       setEmailStep("idle");
       setEmailCode("");
-      say("Your email is verified.");
+      say("email", "Your email is verified.");
     } catch (err) {
-      say(err instanceof Error ? err.message : "That code didn't work.", true);
+      say("email", loadErrorMessage(err), true);
     } finally {
       setEmailBusy(false);
     }
   }
 
   async function changePin() {
-    if (pinNew !== pinNew2) return say("Your new PINs don't match.", true);
+    if (pinBusy) return;
+    if (pinCurrent.length !== 6) return say("pin", "Please enter your current 6-number PIN.", true);
+    if (pinNew.length !== 6) return say("pin", "Your new PIN must be 6 numbers.", true);
+    if (pinNew !== pinNew2) return say("pin", "Your new PINs don't match.", true);
     setPinBusy(true);
     try {
       await accountService.changePin(pinCurrent, pinNew);
@@ -175,31 +188,40 @@ export default function AccountPage() {
       setPinNew2("");
       const s = await authService.sessions();
       setSessions(s);
-      say("PIN changed. Other devices were signed out.");
+      say("pin", "PIN changed. Other devices were signed out.");
     } catch (err) {
-      say(err instanceof Error ? err.message : "Couldn't change your PIN.", true);
+      say("pin", loadErrorMessage(err), true);
     } finally {
       setPinBusy(false);
     }
   }
 
   async function revoke(sessionId: string) {
+    if (sessionBusy) return;
+    setSessionBusy(sessionId);
     try {
       await authService.revokeSession(sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-      say("That device was signed out.");
+      say("sessions", "That device was signed out.");
     } catch (err) {
-      say(err instanceof Error ? err.message : "Couldn't sign that device out.", true);
+      say("sessions", loadErrorMessage(err), true);
+    } finally {
+      setSessionBusy(null);
     }
   }
 
   async function revokeOthers() {
+    if (sessionBusy) return;
+    setSessionBusy("all");
     try {
       await authService.revokeAllOtherSessions();
       setSessions((prev) => prev.filter((s) => s.current));
-      say("All other devices were signed out.");
-    } catch {
-      say("Couldn't sign other devices out.", true);
+      say("sessions", "All other devices were signed out.");
+    } catch (err) {
+      say("sessions", loadErrorMessage(err), true);
+    } finally {
+      setSessionBusy(null);
+      setConfirmSignOutOthers(false);
     }
   }
 
@@ -210,9 +232,7 @@ export default function AccountPage() {
   if (loading) {
     return (
       <AppShell>
-        <div className="flex justify-center py-20 text-ink">
-          <Spinner className="h-7 w-7" />
-        </div>
+        <PageSpinner />
       </AppShell>
     );
   }
@@ -224,21 +244,20 @@ export default function AccountPage() {
     .join("")
     .toUpperCase();
 
+  if (!profile) {
+    return (
+      <AppShell>
+        <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">Account</h1>
+        <div className="mt-6 max-w-xl">
+          <LoadErrorBanner message={loadError ?? "We couldn't load your account."} onRetry={() => void load()} />
+        </div>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
-      {loadError ? <LoadErrorBanner message={loadError} onRetry={() => void load()} /> : null}
       <h1 className="font-display text-[30px] font-bold text-ink sm:text-[36px]">Account</h1>
-
-      {notice ? (
-        <p
-          role="status"
-          className={`mt-4 rounded-xl px-4 py-3 text-[15px] font-medium ${
-            notice.bad ? "bg-danger/10 text-danger" : "bg-sage/15 text-ink"
-          }`}
-        >
-          {notice.text}
-        </p>
-      ) : null}
 
       <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-2">
         {/* Profile */}
@@ -272,11 +291,12 @@ export default function AccountPage() {
           </div>
 
           <Field label="Your name">
-            {(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />}
+            {(id, control) => <Input id={id} {...control} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={60} />}
           </Field>
           <Button size="md" loading={savingName} onClick={saveName}>
             Save name
           </Button>
+          {noticeIn("profile")}
 
           <div className="border-t border-line pt-4">
             <p className="text-[14px] text-subtle">Mobile number (used to sign in)</p>
@@ -298,9 +318,10 @@ export default function AccountPage() {
             A verified email lets you recover your account if you ever forget your PIN.
           </p>
           <Field label={profile?.email ? "Change email" : "Add your email"}>
-            {(id) => (
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 type="email"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
@@ -318,14 +339,14 @@ export default function AccountPage() {
           ) : (
             <div className="space-y-3">
               <Field label="Enter the 6-number code we emailed">
-                {(id) => (
-                  <Input
+                {(id, control) => (
+                  <PinInput
                     id={id}
+                    {...control}
                     value={emailCode}
-                    onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onValueChange={setEmailCode}
+                    autoComplete="one-time-code"
                     placeholder="123456"
-                    inputMode="numeric"
-                    className="tracking-[0.4em]"
                   />
                 )}
               </Field>
@@ -339,32 +360,31 @@ export default function AccountPage() {
               </div>
             </div>
           )}
+          {noticeIn("email")}
         </div>
 
         {/* Security */}
         <div className="card space-y-4 p-6">
           <h2 className="text-[18px] font-bold text-ink">Change your PIN</h2>
           <Field label="Current PIN">
-            {(id) => (
-              <Input id={id} value={pinCurrent} inputMode="numeric" className="tracking-[0.5em]" placeholder="••••••"
-                onChange={(e) => setPinCurrent(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+            {(id, control) => (
+              <PinInput id={id} {...control} value={pinCurrent} onValueChange={setPinCurrent} autoComplete="current-password" placeholder="••••••" />
             )}
           </Field>
           <Field label="New 6-number PIN">
-            {(id) => (
-              <Input id={id} value={pinNew} inputMode="numeric" className="tracking-[0.5em]" placeholder="••••••"
-                onChange={(e) => setPinNew(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+            {(id, control) => (
+              <PinInput id={id} {...control} value={pinNew} onValueChange={setPinNew} autoComplete="new-password" placeholder="••••••" />
             )}
           </Field>
           <Field label="Type your new PIN again">
-            {(id) => (
-              <Input id={id} value={pinNew2} inputMode="numeric" className="tracking-[0.5em]" placeholder="••••••"
-                onChange={(e) => setPinNew2(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+            {(id, control) => (
+              <PinInput id={id} {...control} value={pinNew2} onValueChange={setPinNew2} autoComplete="new-password" placeholder="••••••" />
             )}
           </Field>
           <Button size="md" loading={pinBusy} onClick={changePin}>
             Change PIN
           </Button>
+          {noticeIn("pin")}
           <p className="text-[13px] text-subtle">
             For safety, changing your PIN signs out every other device.
           </p>
@@ -379,25 +399,34 @@ export default function AccountPage() {
                 <div className="min-w-0">
                   <p className="truncate text-[16px] font-semibold text-ink">
                     {s.device}
-                    {s.current ? <span className="ml-2 text-[12px] font-bold text-sage">This device</span> : null}
+                    {s.current ? <span className="ml-2 text-[12px] font-bold text-sage-ink">This device</span> : null}
                   </p>
                   <p className="text-[13px] text-subtle">Last used {formatDateTime(s.lastSeenAt)}</p>
                 </div>
                 {!s.current ? (
-                  <button onClick={() => revoke(s.id)} className="shrink-0 text-[14px] font-semibold text-danger hover:underline">
+                  <Button
+                    size="md"
+                    variant="danger"
+                    className="shrink-0"
+                    loading={sessionBusy === s.id}
+                    disabled={sessionBusy !== null}
+                    onClick={() => revoke(s.id)}
+                    aria-label={`Sign out ${s.device}`}
+                  >
                     Sign out
-                  </button>
+                  </Button>
                 ) : null}
               </li>
             ))}
           </ul>
           {sessions.length > 1 ? (
-            <Button size="md" variant="danger" onClick={revokeOthers}>
+            <Button size="md" variant="danger" disabled={sessionBusy !== null} onClick={() => setConfirmSignOutOthers(true)}>
               Sign out all other devices
             </Button>
           ) : (
             <p className="text-[14px] text-subtle">You&rsquo;re only signed in here.</p>
           )}
+          {noticeIn("sessions")}
         </div>
 
         {/* Quick links + sign out */}
@@ -415,7 +444,7 @@ export default function AccountPage() {
             <div className="card flex items-center justify-between p-6 hover:shadow-lift">
               <div>
                 <p className="text-[17px] font-semibold text-ink">Add funds</p>
-                <p className="text-[15px] text-subtle">Top up or see your address</p>
+                <p className="text-[15px] text-subtle">Top up your wallet</p>
               </div>
               <span className="text-[22px] text-subtle">→</span>
             </div>
@@ -423,7 +452,7 @@ export default function AccountPage() {
           <Link href="/home/withdraw" className="block">
             <div className="card flex items-center justify-between p-6 hover:shadow-lift">
               <div>
-                <p className="text-[17px] font-semibold text-ink">Move to your pocket</p>
+                <p className="text-[17px] font-semibold text-ink">Cash out</p>
                 <p className="text-[15px] text-subtle">GCash, Maya, bank — coming soon</p>
               </div>
               <span className="text-[22px] text-subtle">→</span>
@@ -443,6 +472,22 @@ export default function AccountPage() {
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={confirmSignOutOthers}
+        onClose={() => (sessionBusy ? undefined : setConfirmSignOutOthers(false))}
+        title="Sign out every other device?"
+        description="Anyone using your account on another phone or computer will need your PIN to sign in again."
+      >
+        <div className="flex flex-col gap-3 sm:flex-row-reverse">
+          <Button fullWidth variant="danger" loading={sessionBusy === "all"} onClick={revokeOthers}>
+            Sign them out
+          </Button>
+          <Button fullWidth variant="ghost" disabled={sessionBusy !== null} onClick={() => setConfirmSignOutOthers(false)}>
+            Cancel
+          </Button>
+        </div>
+      </Dialog>
     </AppShell>
   );
 }

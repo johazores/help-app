@@ -1,45 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
+import { PageSpinner } from "@/components/ui/spinner";
+import { ChoiceGrid } from "@/components/ui/choice-grid";
+import { RecipientForm, RecipientPicker } from "@/components/recipient-form";
+import { LoadErrorBanner } from "@/components/load-error-banner";
 import { authService } from "@/services/auth-service";
 import { recipientService } from "@/services/recipient-service";
 import { safetyNetService } from "@/services/safety-net-service";
 import { ratesService } from "@/services/rates-service";
 import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
-import { LoadErrorBanner } from "@/components/load-error-banner";
 import {
+  CHECK_IN_INTERVALS,
   convertFromHeld,
+  decimalInput,
   formatFiat,
   formatMoney,
-  NETWORK_FEE_XLM,
+  intervalPhrase,
 } from "@/lib/format";
 import type { Recipient } from "@/services/types";
 
 const MIN_AMOUNT = 1;
-
-function intervalLabel(minutes: number): string {
-  const found = [
-    { minutes: 1, label: "every minute" },
-    { minutes: 10080, label: "every week" },
-    { minutes: 43200, label: "every month" },
-    { minutes: 129600, label: "every 3 months" },
-  ].find((i) => i.minutes === minutes);
-  return found?.label ?? "on schedule";
-}
-
-const intervals = [
-  { minutes: 1, label: "Every minute", note: "For trying it out" },
-  { minutes: 10080, label: "Every week" },
-  { minutes: 43200, label: "Every month" },
-  { minutes: 129600, label: "Every 3 months" },
-];
+const intervalChoices = CHECK_IN_INTERVALS.map((i) => ({ value: i.minutes, label: i.label, note: i.note }));
 
 export default function NewSafetyNetPage() {
   const router = useRouter();
@@ -53,12 +41,7 @@ export default function NewSafetyNetPage() {
   const [useBackup, setUseBackup] = useState(false);
   const [backupRecipientId, setBackupRecipientId] = useState("");
   const [receiverIntervalMinutes, setReceiverIntervalMinutes] = useState(43200);
-
   const [addingNew, setAddingNew] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newRelationship, setNewRelationship] = useState("");
-  const [newPhone, setNewPhone] = useState("");
-  const [savingRecipient, setSavingRecipient] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -66,26 +49,27 @@ export default function NewSafetyNetPage() {
   const [balance, setBalance] = useState<string>("0");
   const [phpRate, setPhpRate] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const submitted = useRef(false);
 
   const load = useCallback(async () => {
     setLoadError(null);
     try {
-      const [list, profile, rates] = await Promise.all([
-        recipientService.list(),
-        authService.me(),
-        ratesService.get(),
-      ]);
+      const [list, profile] = await Promise.all([recipientService.list(), authService.me()]);
       setRecipients(list);
-      setRecipientId(list[0]?.id ?? "");
+      setRecipientId((current) => current || list[0]?.id || "");
       setAddingNew(list.length === 0);
       setBalance(profile.balance);
-      setPhpRate(rates.rates.PHP ?? null);
     } catch (err) {
       if (handleProtectedLoadError(err, router, () => authService.signOut()) !== "error") return;
       setLoadError(loadErrorMessage(err));
     } finally {
       setReady(true);
     }
+    // Estimates are a convenience: the form still works if rates are unavailable.
+    ratesService
+      .get()
+      .then((rates) => setPhpRate(rates.rates.PHP ?? null))
+      .catch(() => setPhpRate(null));
   }, [router]);
 
   useEffect(() => {
@@ -94,72 +78,60 @@ export default function NewSafetyNetPage() {
       return;
     }
     void load();
-    if (typeof window !== "undefined") {
-      const preset = new URLSearchParams(window.location.search).get("preset");
-      if (preset === "abuloy") {
-        setLabel("Abuloy fund");
-        setIntervalMinutes(43200);
-      }
+    const preset = new URLSearchParams(window.location.search).get("preset");
+    if (preset === "abuloy") {
+      setLabel("Abuloy fund");
+      setIntervalMinutes(43200);
     }
   }, [router, load]);
 
-  async function saveRecipient() {
-    setError(null);
-    if (newName.trim().length < 2 || newRelationship.trim().length < 2) {
-      setError("Please enter their name and how they're related to you.");
-      return;
+  // Any change after Review sends the person back to review the new details.
+  useEffect(() => {
+    setReviewing(false);
+  }, [recipientId, label, amount, intervalMinutes, useBackup, backupRecipientId, receiverIntervalMinutes]);
+
+  // The backup must always be someone other than the main receiver.
+  useEffect(() => {
+    if (backupRecipientId && backupRecipientId === recipientId) {
+      setBackupRecipientId(recipients.find((r) => r.id !== recipientId)?.id ?? "");
     }
-    setSavingRecipient(true);
-    try {
-      const created = await recipientService.create({
-        name: newName,
-        relationship: newRelationship,
-        phone: newPhone || undefined,
-      });
-      setRecipients((prev) => [...prev, created]);
-      setRecipientId(created.id);
-      setAddingNew(false);
-      setNewName("");
-      setNewRelationship("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't add that person.");
-    } finally {
-      setSavingRecipient(false);
+  }, [recipientId, backupRecipientId, recipients]);
+
+  function validate(): string | null {
+    if (!recipientId) return "Please choose who this is for.";
+    if (label.trim().length < 2) return "Please give this a short name, like “Monthly support”.";
+    const value = Number(amount);
+    if (!(value >= MIN_AMOUNT)) return `Please enter an amount of at least ${MIN_AMOUNT}.`;
+    if (value > Number(balance)) return "You don't have enough funds for this. Please add funds first.";
+    if (useBackup && !backupRecipientId) {
+      return "Please choose a backup person, or turn off the backup option.";
     }
+    if (useBackup && backupRecipientId === recipientId) {
+      return "Please choose someone different as the backup.";
+    }
+    return null;
   }
 
   function review() {
-    setError(null);
-    if (!recipientId) {
-      setError("Please choose who this is for.");
-      return;
-    }
-    if (label.trim().length < 2) {
-      setError("Please give this a short name, like “Monthly support”.");
-      return;
-    }
-    const value = Number(amount);
-    if (!(value >= MIN_AMOUNT)) {
-      setError(`Please enter an amount of at least ${MIN_AMOUNT}.`);
-      return;
-    }
-    if (value > Number(balance)) {
-      setError("You don't have enough funds for this. Please add funds first.");
-      return;
-    }
-    if (useBackup && !backupRecipientId) {
-      setError("Please choose a backup person, or turn off the backup option.");
-      return;
-    }
-    setReviewing(true);
+    const problem = validate();
+    setError(problem);
+    if (!problem) setReviewing(true);
   }
 
   async function confirm() {
+    if (submitted.current) return;
+    const problem = validate();
+    if (problem) {
+      setError(problem);
+      setReviewing(false);
+      return;
+    }
+    submitted.current = true;
     setError(null);
     setSubmitting(true);
     try {
       const net = await safetyNetService.create({
-        label,
+        label: label.trim(),
         amount,
         recipientId,
         checkInIntervalMinutes: intervalMinutes,
@@ -168,7 +140,8 @@ export default function NewSafetyNetPage() {
       });
       router.push(`/home/${net.id}?created=1`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't set this up.");
+      submitted.current = false;
+      setError(loadErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -176,9 +149,7 @@ export default function NewSafetyNetPage() {
   if (!ready) {
     return (
       <AppShell>
-        <div className="flex justify-center py-20 text-ink">
-          <Spinner className="h-7 w-7" />
-        </div>
+        <PageSpinner />
       </AppShell>
     );
   }
@@ -194,160 +165,110 @@ export default function NewSafetyNetPage() {
   return (
     <AppShell>
       {loadError ? <LoadErrorBanner message={loadError} onRetry={() => void load()} /> : null}
-      <Link href="/home" className="text-[15px] font-semibold text-subtle hover:text-ink">
+      <Link href="/home" className="inline-flex min-h-11 items-center text-[15px] font-semibold text-subtle hover:text-ink">
         ← Back
       </Link>
-      <h1 className="mt-3 font-display text-[30px] font-bold text-ink sm:text-[36px]">
+      <h1 className="mt-1 font-display text-[30px] font-bold text-ink sm:text-[36px]">
         Set aside money
       </h1>
 
+      {!loadError && balanceNum <= 0 ? (
+        <div className="mt-6 max-w-xl rounded-xl border border-marigold/50 bg-marigold/10 px-5 py-4 text-[15px] text-body">
+          <p className="font-semibold text-ink">Your wallet is empty right now.</p>
+          <p className="mt-1">
+            Add funds first, then come back to set money aside.{" "}
+            <Link href="/home/deposit" className="font-semibold text-ink underline">
+              Add funds
+            </Link>
+          </p>
+        </div>
+      ) : null}
+
       <div className="mt-8 max-w-xl space-y-8">
-        {/* Who is it for */}
-        <section>
-          <h2 className="text-[19px] font-bold text-ink">Who is this for?</h2>
-          <div className="mt-4 space-y-3">
-            {recipients.map((r) => (
-              <label
-                key={r.id}
-                className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 ${
-                  recipientId === r.id ? "border-ink bg-ink/5" : "border-line bg-white"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="recipient"
-                  className="h-5 w-5 accent-[#0C3B3A]"
-                  checked={recipientId === r.id}
-                  onChange={() => setRecipientId(r.id)}
-                />
-                <span>
-                  <span className="block text-[17px] font-semibold text-ink">{r.name}</span>
-                  <span className="block text-[15px] text-subtle">{r.relationship}</span>
-                </span>
-              </label>
-            ))}
+        <section aria-labelledby="who-heading">
+          <h2 id="who-heading" className="text-[19px] font-bold text-ink">Who is this for?</h2>
+          <div className="mt-4">
+            <RecipientPicker
+              name="recipient"
+              legend="Who is this for?"
+              recipients={recipients}
+              value={recipientId}
+              onChange={setRecipientId}
+            />
           </div>
 
           {addingNew ? (
-            <div className="mt-4 rounded-xl border border-line bg-white p-5">
-              <div className="space-y-4">
-                <Field label="Their name">
-                  {(id) => (
-                    <Input id={id} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Elena dela Cruz" />
-                  )}
-                </Field>
-                <Field label="How are they related to you?">
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={newRelationship}
-                      onChange={(e) => setNewRelationship(e.target.value)}
-                      placeholder="Mother"
-                    />
-                  )}
-                </Field>
-                <Field label="Their mobile number (optional)" hint="So they can find their link again if they lose their phone.">
-                  {(id) => (
-                    <Input
-                      id={id}
-                      value={newPhone}
-                      onChange={(e) => setNewPhone(e.target.value)}
-                      placeholder="09XX XXX XXXX"
-                      inputMode="tel"
-                    />
-                  )}
-                </Field>
-                <div className="flex gap-3">
-                  <Button size="md" loading={savingRecipient} onClick={saveRecipient}>
-                    Save
-                  </Button>
-                  {recipients.length > 0 ? (
-                    <Button size="md" variant="ghost" onClick={() => setAddingNew(false)}>
-                      Cancel
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
+            <div className="mt-4">
+              <RecipientForm
+                onSaved={(created) => {
+                  setRecipients((prev) => [...prev, created]);
+                  setRecipientId(created.id);
+                  setAddingNew(false);
+                }}
+                onCancel={recipients.length > 0 ? () => setAddingNew(false) : undefined}
+              />
             </div>
           ) : (
             <button
+              type="button"
               onClick={() => setAddingNew(true)}
-              className="mt-4 text-[16px] font-semibold text-ink underline"
+              className="mt-3 min-h-11 text-[16px] font-semibold text-ink underline"
             >
               + Add someone new
             </button>
           )}
         </section>
 
-        {/* Details */}
-        <section className="space-y-5">
-          <h2 className="text-[19px] font-bold text-ink">The details</h2>
+        <section className="space-y-5" aria-labelledby="details-heading">
+          <h2 id="details-heading" className="text-[19px] font-bold text-ink">The details</h2>
           <Field label="Give it a short name" hint="Something you'll recognize, like “Monthly support”.">
-            {(id) => (
-              <Input id={id} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Monthly support" />
+            {(id, control) => (
+              <Input id={id} {...control} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Monthly support" maxLength={60} />
             )}
           </Field>
-          <Field label="How much do you want to set aside?">
-            {(id) => (
+          <Field
+            label="How much do you want to set aside?"
+            hint={`You have ${formatMoney(balanceNum)} available${phpRate !== null ? ` (${peso(balanceNum)})` : ""}.`}
+          >
+            {(id, control) => (
               <Input
                 id={id}
+                {...control}
                 value={amount}
-                onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
-                placeholder="15000"
+                onChange={(e) => setAmount(decimalInput(e.target.value))}
+                placeholder="100"
                 inputMode="decimal"
+                autoComplete="off"
               />
             )}
           </Field>
           {amt > 0 && phpRate !== null ? (
-            <p className="mt-2 hint">{peso(amt)} at today&rsquo;s rate</p>
+            <p className="hint" aria-live="polite">{peso(amt)} at today&rsquo;s rate</p>
           ) : null}
         </section>
 
-        {/* Check-in frequency */}
-        <section>
-          <h2 className="text-[19px] font-bold text-ink">How often will you check in?</h2>
+        <section aria-labelledby="interval-heading">
+          <h2 id="interval-heading" className="text-[19px] font-bold text-ink">How often will you check in?</h2>
           <p className="mt-1 hint">
             If you don&rsquo;t check in within this time, the money opens to your family.
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            {intervals.map((i) => (
-              <button
-                key={i.minutes}
-                onClick={() => setIntervalMinutes(i.minutes)}
-                className={`rounded-xl border p-4 text-left ${
-                  intervalMinutes === i.minutes ? "border-ink bg-ink text-paper" : "border-line bg-white text-ink"
-                }`}
-              >
-                <span className="block text-[17px] font-semibold">{i.label}</span>
-                {i.note ? (
-                  <span
-                    className={`mt-0.5 block text-[13px] ${
-                      intervalMinutes === i.minutes ? "text-paper/80" : "text-subtle"
-                    }`}
-                  >
-                    {i.note}
-                  </span>
-                ) : null}
-              </button>
-            ))}
+          <div className="mt-4">
+            <ChoiceGrid
+              label="How often will you check in?"
+              choices={intervalChoices}
+              value={intervalMinutes}
+              onChange={setIntervalMinutes}
+            />
           </div>
         </section>
 
-        {/* Backup beneficiary — if the receiver passes away after receiving */}
-        <section>
-          <h2 className="text-[19px] font-bold text-ink">What if they pass away after receiving?</h2>
+        <section aria-labelledby="backup-heading">
+          <h2 id="backup-heading" className="text-[19px] font-bold text-ink">A backup person (optional)</h2>
           <p className="mt-1 hint">
-            Once {recipientName || "your loved one"} receives this money, Sagip can keep protecting it. Name
-            someone else — a sibling, spouse, or child — who should receive it if {recipientName || "they"}{" "}
-            can no longer check in, including if they pass away.
+            After {recipientName} receives this money, Sagip can keep protecting it. Name someone else —
+            a sibling, spouse, or child — who receives it if {recipientName} can no longer check in,
+            including if they pass away.
           </p>
-          {!useBackup && backupChoices.length > 0 ? (
-            <p className="mt-3 rounded-xl border border-marigold/40 bg-marigold/10 px-4 py-3 text-[14px] leading-relaxed text-body">
-              <span className="font-semibold text-ink">Without a backup,</span> if {recipientName} receives
-              this and later passes away, the money stays in their account with no automatic next step in
-              Sagip.
-            </p>
-          ) : null}
           <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-4">
             <input
               type="checkbox"
@@ -363,8 +284,7 @@ export default function NewSafetyNetPage() {
             <span>
               <span className="block text-[17px] font-semibold text-ink">Add a backup person</span>
               <span className="block text-[15px] text-subtle">
-                If {recipientName || "they"} can&rsquo;t check in after receiving — including if they pass
-                away — this person receives next. Enforced on Stellar.
+                If {recipientName} can&rsquo;t check in after receiving, this person receives next.
               </span>
             </span>
           </label>
@@ -373,32 +293,17 @@ export default function NewSafetyNetPage() {
             <div className="mt-4 space-y-4 rounded-xl border border-line bg-white p-5">
               {backupChoices.length === 0 ? (
                 <p className="text-[15px] text-body">
-                  Add another loved one first — the backup must be someone different from the primary receiver.
+                  Add another loved one first — the backup must be someone different from {recipientName}.
                 </p>
               ) : (
                 <>
-                  <div className="space-y-3">
-                    {backupChoices.map((r) => (
-                      <label
-                        key={r.id}
-                        className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 ${
-                          backupRecipientId === r.id ? "border-ink bg-ink/5" : "border-line"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="backup"
-                          className="h-5 w-5 accent-[#0C3B3A]"
-                          checked={backupRecipientId === r.id}
-                          onChange={() => setBackupRecipientId(r.id)}
-                        />
-                        <span>
-                          <span className="block text-[17px] font-semibold text-ink">{r.name}</span>
-                          <span className="block text-[15px] text-subtle">{r.relationship}</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
+                  <RecipientPicker
+                    name="backup"
+                    legend="Backup person"
+                    recipients={backupChoices}
+                    value={backupRecipientId}
+                    onChange={setBackupRecipientId}
+                  />
                   <div>
                     <p className="text-[15px] font-semibold text-ink">
                       How often should {recipientName} check in after receiving?
@@ -406,26 +311,24 @@ export default function NewSafetyNetPage() {
                     <p className="mt-1 text-[14px] text-subtle">
                       If they don&rsquo;t, {backupName} can receive the money.
                     </p>
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                      {intervals.map((i) => (
-                        <button
-                          key={i.minutes}
-                          type="button"
-                          onClick={() => setReceiverIntervalMinutes(i.minutes)}
-                          className={`rounded-xl border p-3 text-left ${
-                            receiverIntervalMinutes === i.minutes
-                              ? "border-ink bg-ink text-paper"
-                              : "border-line bg-paper text-ink"
-                          }`}
-                        >
-                          <span className="block text-[15px] font-semibold">{i.label}</span>
-                        </button>
-                      ))}
+                    <div className="mt-3">
+                      <ChoiceGrid
+                        compact
+                        label={`How often should ${recipientName} check in after receiving?`}
+                        choices={intervalChoices.map(({ value, label: text }) => ({ value, label: text }))}
+                        value={receiverIntervalMinutes}
+                        onChange={setReceiverIntervalMinutes}
+                      />
                     </div>
                   </div>
                 </>
               )}
             </div>
+          ) : backupChoices.length > 0 ? (
+            <p className="mt-3 text-[14px] leading-relaxed text-subtle">
+              Without a backup, if {recipientName} receives this and later passes away, the money stays
+              in their account with no automatic next step.
+            </p>
           ) : null}
         </section>
 
@@ -436,16 +339,12 @@ export default function NewSafetyNetPage() {
         ) : null}
 
         {!reviewing ? (
-          <Button
-            fullWidth
-            onClick={review}
-            disabled={addingNew && recipients.length === 0}
-          >
+          <Button fullWidth onClick={review} disabled={recipients.length === 0}>
             Review
           </Button>
         ) : (
-          <div className="card border-2 border-ink p-6">
-            <h2 className="font-display text-[22px] font-bold text-ink">Please review</h2>
+          <div className="card border-2 border-ink p-6" aria-labelledby="review-heading">
+            <h2 id="review-heading" className="font-display text-[22px] font-bold text-ink">Please review</h2>
             <p className="mt-1 text-[15px] text-body">Check the details before you confirm.</p>
 
             <dl className="mt-5 space-y-3 text-[16px]">
@@ -458,11 +357,11 @@ export default function NewSafetyNetPage() {
               </div>
               <div className="flex items-baseline justify-between gap-4">
                 <dt className="text-subtle">For</dt>
-                <dd className="font-semibold text-ink">{recipientName}</dd>
+                <dd className="text-right font-semibold text-ink">{recipientName}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-4">
                 <dt className="text-subtle">Opens to family</dt>
-                <dd className="font-semibold text-ink">if you don&rsquo;t check in {intervalLabel(intervalMinutes)}</dd>
+                <dd className="text-right font-semibold text-ink">if you don&rsquo;t check in {intervalPhrase(intervalMinutes)}</dd>
               </div>
               {useBackup && backupRecipientId ? (
                 <div className="flex items-baseline justify-between gap-4">
@@ -470,14 +369,14 @@ export default function NewSafetyNetPage() {
                   <dd className="text-right font-semibold text-ink">
                     goes to {backupName}
                     <span className="block text-[13px] font-normal text-subtle">
-                      after {intervalLabel(receiverIntervalMinutes)} without check-in
+                      after {intervalPhrase(receiverIntervalMinutes)} without a check-in
                     </span>
                   </dd>
                 </div>
               ) : null}
               <div className="flex items-baseline justify-between gap-4">
-                <dt className="text-subtle">Network fee</dt>
-                <dd className="font-semibold text-ink">less than {formatMoney(NETWORK_FEE_XLM)} (free)</dd>
+                <dt className="text-subtle">Fee</dt>
+                <dd className="font-semibold text-ink">None</dd>
               </div>
 
               <div className="my-2 border-t border-line" />
@@ -496,12 +395,7 @@ export default function NewSafetyNetPage() {
               <Button fullWidth loading={submitting} onClick={confirm}>
                 Confirm &amp; set aside
               </Button>
-              <Button
-                fullWidth
-                variant="ghost"
-                onClick={() => setReviewing(false)}
-                disabled={submitting}
-              >
+              <Button fullWidth variant="ghost" onClick={() => setReviewing(false)} disabled={submitting}>
                 Go back
               </Button>
             </div>
@@ -509,8 +403,8 @@ export default function NewSafetyNetPage() {
               You can take this money back at any time while it&rsquo;s still yours.
             </p>
             <p className="mt-2 rounded-xl bg-sage/10 px-4 py-3 text-center text-[13px] leading-relaxed text-body">
-              When you confirm, the rules are recorded permanently — who receives this and when they can.
-              No one, not even Sagip, can change them afterward.
+              When you confirm, who can receive this and from when is recorded on a public network
+              that anyone can check. Your receipt links to that record.
             </p>
           </div>
         )}

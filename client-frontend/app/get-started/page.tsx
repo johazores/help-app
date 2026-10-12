@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PinInput } from "@/components/ui/pin-input";
 import { Field } from "@/components/ui/field";
 import { authService } from "@/services/auth-service";
+import { loadErrorMessage } from "@/lib/api-errors";
 
 export default function GetStartedPage() {
   const router = useRouter();
@@ -19,10 +21,12 @@ export default function GetStartedPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function submit() {
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (loading) return;
     setError(null);
-    if (!name || !phone || pin.length !== 6) {
-      setError("Please fill in every box. Your PIN needs 6 numbers.");
+    if (name.trim().length < 2 || !phone.trim() || pin.length !== 6) {
+      setError("Please fill in your name, mobile number, and a 6-number PIN.");
       return;
     }
     if (pin !== pinConfirm) {
@@ -31,10 +35,10 @@ export default function GetStartedPage() {
     }
     setLoading(true);
     try {
-      await authService.signUp({ name, phone, pin, email: email || undefined });
+      await authService.signUp({ name: name.trim(), phone, pin, email: email.trim() || undefined });
       router.push("/welcome");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(loadErrorMessage(err));
       setLoading(false);
     }
   }
@@ -47,41 +51,47 @@ export default function GetStartedPage() {
         </Link>
       </header>
 
-      <div className="container-page flex flex-1 items-center justify-center py-10">
+      <main className="container-page flex flex-1 items-center justify-center py-10">
         <div className="w-full max-w-md">
           <h1 className="font-display text-[32px] font-bold text-ink">Create your account</h1>
           <p className="mt-2 text-[17px] text-body">It only takes a minute.</p>
 
-          <div className="mt-8 space-y-5">
+          <form className="mt-8 space-y-5" onSubmit={submit} noValidate>
             <Field label="Your name">
-              {(id) => (
+              {(id, control) => (
                 <Input
                   id={id}
+                  {...control}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Juan dela Cruz"
                   autoComplete="name"
+                  maxLength={60}
+                  required
                 />
               )}
             </Field>
 
             <Field label="Mobile number" hint="We use this to sign you in.">
-              {(id) => (
+              {(id, control) => (
                 <Input
                   id={id}
+                  {...control}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="0917 123 4567"
                   inputMode="tel"
-                  autoComplete="tel"
+                  autoComplete="username"
+                  required
                 />
               )}
             </Field>
 
             <Field label="Email (recommended)" hint="Used to recover your account if you forget your PIN.">
-              {(id) => (
+              {(id, control) => (
                 <Input
                   id={id}
+                  {...control}
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -92,35 +102,27 @@ export default function GetStartedPage() {
             </Field>
 
             <Field label="Create a 6-number PIN" hint="You'll use this every time you sign in.">
-              {(id) => (
-                <Input
-                  id={id}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="••••••"
-                  inputMode="numeric"
-                  className="tracking-[0.5em]"
-                />
+              {(id, control) => (
+                <PinInput id={id} {...control} value={pin} onValueChange={setPin} autoComplete="new-password" placeholder="••••••" required />
               )}
             </Field>
 
-            <Field label="Type your PIN again" error={error ?? undefined}>
-              {(id) => (
-                <Input
-                  id={id}
-                  value={pinConfirm}
-                  onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                  placeholder="••••••"
-                  inputMode="numeric"
-                  className="tracking-[0.5em]"
-                />
+            <Field label="Type your PIN again">
+              {(id, control) => (
+                <PinInput id={id} {...control} value={pinConfirm} onValueChange={setPinConfirm} autoComplete="new-password" placeholder="••••••" required />
               )}
             </Field>
 
-            <Button fullWidth loading={loading} onClick={submit}>
+            {error ? (
+              <p className="text-[15px] font-medium text-danger" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <Button type="submit" fullWidth loading={loading}>
               Create account
             </Button>
-          </div>
+          </form>
 
           <p className="mt-6 text-center text-[16px] text-subtle">
             Already have an account?{" "}
@@ -129,7 +131,7 @@ export default function GetStartedPage() {
             </Link>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
