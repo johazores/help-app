@@ -5,7 +5,7 @@ import { accountService } from "@/server/services/account-service";
 export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (!allowMethods(req, res, ["POST"])) return;
   const user = await requireUser(req);
-  rateLimit(`changepin:${user.id}`, 5, 15 * 60_000);
+  await rateLimit("change-pin", user.id, 5, 15 * 60_000);
   const { currentPin, newPin } = req.body ?? {};
   res
     .status(200)

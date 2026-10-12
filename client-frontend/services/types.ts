@@ -136,6 +136,17 @@ export interface SafetyNetCardSummary {
   claimCode: string;
 }
 
+/** A claim link found again through the public recovery lookup. */
+export interface RecoveredClaimLink {
+  label: string;
+  fromName: string;
+  forName: string;
+  amount: string;
+  status: string;
+  claimCode: string;
+  isOpen: boolean;
+}
+
 export interface ClaimInfo {
   kind: string;
   requestState: string;

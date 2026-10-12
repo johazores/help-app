@@ -133,6 +133,9 @@ model Recipient {
 
   safetyNets SafetyNet[]
   safetyNetsAsBackup SafetyNet[] @relation("SafetyNetBackup")
+
+  @@index([ownerId])
+  @@index([phone])
 }
 
 enum SafetyNetStatus {
@@ -187,6 +190,9 @@ model SafetyNet {
 
   @@index([ownerId])
   @@index([ownerId, createdAt])
+  @@index([recipientId])
+  @@index([backupRecipientId])
+  @@index([status, unlockAt])
 }
 
 enum ActivityType {
@@ -298,4 +304,15 @@ model PaluwaganContribution {
   txHash   String?
 
   @@unique([cycleId, memberId])
+  @@index([memberId])
+}
+
+/// Fixed-window rate-limit counters shared by every API instance.
+/// Keys are hashed scope identifiers, never raw phone numbers or IPs.
+model RateLimitBucket {
+  key     String   @id
+  hits    Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }

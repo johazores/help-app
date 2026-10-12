@@ -9,7 +9,7 @@ export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
     res.status(200).json(await paluwaganService.listMine(user.id));
     return;
   }
-  rateLimit(`plw-create:${user.id}`, 5, 60 * 60_000);
+  await rateLimit("paluwagan-create", user.id, 5, 60 * 60_000);
   const { name, amount, frequencyMinutes, pin } = req.body ?? {};
   res.status(201).json(
     await paluwaganService.create(user.id, {

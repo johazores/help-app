@@ -1,5 +1,5 @@
 import { apiClient } from "@/services/api-client";
-import type { ClaimInfo } from "@/services/types";
+import type { ClaimInfo, RecoveredClaimLink } from "@/services/types";
 
 class ClaimService {
   async lookup(code: string): Promise<ClaimInfo> {
@@ -26,6 +26,15 @@ class ClaimService {
 
   async backupClaim(code: string): Promise<{ amount: string; forName: string; primaryName: string; txHash: string }> {
     return apiClient.request(`/claim/${code}/backup`, { method: "POST", auth: false });
+  }
+
+  /** Finds claim links again using the loved one's number and the sender's number. */
+  async recover(phone: string, senderPhone: string): Promise<RecoveredClaimLink[]> {
+    return apiClient.request<RecoveredClaimLink[]>("/claim/recover", {
+      method: "POST",
+      body: { phone, senderPhone },
+      auth: false,
+    });
   }
 
   async requestEarly(code: string): Promise<void> {

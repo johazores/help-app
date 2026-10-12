@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { allowMethods, handler, requireUser } from "@/lib/api";
+import { allowMethods, handler, rateLimit, requireUser } from "@/lib/api";
+import { text } from "@/lib/validation";
 import { walletService } from "@/server/services/wallet-service";
 
 export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
@@ -10,6 +11,6 @@ export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
     res.status(200).json(await walletService.list(user.id));
     return;
   }
-  const { name } = req.body ?? {};
-  res.status(201).json(await walletService.create(user.id, name));
+  await rateLimit("wallet-create", user.id, 10, 60 * 60_000);
+  res.status(201).json(await walletService.create(user.id, text(req.body?.name)));
 });

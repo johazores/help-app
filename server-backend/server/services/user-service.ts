@@ -1,33 +1,25 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { hashPin, verifyPin } from "@/lib/crypto";
+import { normalizeEmail, normalizePhone, requirePin } from "@/lib/validation";
 import { sessionService } from "@/server/services/session-service";
 import { stellarService } from "@/server/services/stellar-service";
 import { mailerService } from "@/server/services/mailer-service";
 import { verificationService } from "@/server/services/verification-service";
 
-export function normalizePhone(input: string): string {
-  const trimmed = input.replace(/[\s-]/g, "");
-  if (!/^(\+?63|0)?9\d{9}$/.test(trimmed)) {
-    throw new ApiError(400, "Please enter a valid mobile number.");
-  }
-  const digits = trimmed.replace(/^\+?63/, "0").replace(/^(?!0)/, "0");
-  return digits.startsWith("0") ? digits : `0${digits}`;
-}
-
-export function normalizeEmail(input: string): string {
-  const email = input.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-    throw new ApiError(400, "Please enter a valid email address.");
-  }
-  return email;
+// Compared against when no account matches, so a wrong number and a wrong
+// PIN take the same time and the response can't reveal who has an account.
+let decoyPinHash: string | null = null;
+function decoyHash(): string {
+  decoyPinHash ??= hashPin("000000");
+  return decoyPinHash;
 }
 
 class UserService {
   async signUp(input: { name: string; phone: string; pin: string; email?: string; device: string }) {
-    const name = input.name.trim();
+    const name = input.name.trim().slice(0, 60);
     if (name.length < 2) throw new ApiError(400, "Please enter your name.");
-    if (!/^\d{6}$/.test(input.pin)) throw new ApiError(400, "Your PIN must be 6 numbers.");
+    const pin = requirePin(input.pin);
 
     const phone = normalizePhone(input.phone);
     const email = input.email?.trim() ? normalizeEmail(input.email) : null;
@@ -42,7 +34,7 @@ class UserService {
     // No wallet yet — the person chooses to create or import one right after
     // sign-up, in the wallet onboarding flow.
     const user = await prisma.user.create({
-      data: { name, phone, email, pinHash: hashPin(input.pin) },
+      data: { name, phone, email, pinHash: hashPin(pin) },
     });
 
     // Best-effort verification email; sign-up must not fail if SMTP is absent.
@@ -63,7 +55,8 @@ class UserService {
   async signIn(input: { phone: string; pin: string; device: string }) {
     const phone = normalizePhone(input.phone);
     const user = await prisma.user.findUnique({ where: { phone } });
-    if (!user || !verifyPin(input.pin, user.pinHash)) {
+    const pinMatches = verifyPin(input.pin, user?.pinHash ?? decoyHash());
+    if (!user || !pinMatches) {
       throw new ApiError(401, "That mobile number or PIN doesn't match.");
     }
     const token = await sessionService.createForUser(user.id, input.device);

@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { SafetyNetStatus } from "@prisma/client";
+import { normalizePhone, text } from "@/lib/validation";
 import { stellarService } from "@/server/services/stellar-service";
+
+const MAX_RECIPIENTS = 50;
 
 class RecipientService {
   async list(ownerId: string) {
@@ -19,20 +22,16 @@ class RecipientService {
     );
   }
 
-  async create(ownerId: string, input: { name: string; relationship: string; phone?: string }) {
-    const name = input.name.trim();
-    const relationship = input.relationship.trim();
+  async create(ownerId: string, input: { name: unknown; relationship: unknown; phone?: unknown }) {
+    const name = text(input.name).slice(0, 60);
+    const relationship = text(input.relationship).slice(0, 40);
     if (name.length < 2) throw new ApiError(400, "Please enter their name.");
     if (relationship.length < 2) throw new ApiError(400, "Please say how they're related to you.");
+    const phone = text(input.phone) ? normalizePhone(input.phone) : null;
 
-    let phone: string | null = null;
-    if (input.phone?.trim()) {
-      const digits = input.phone.replace(/[\s-]/g, "");
-      if (!/^(\+?63|0)?9\d{9}$/.test(digits)) {
-        throw new ApiError(400, "Please enter a valid mobile number.");
-      }
-      phone = digits.replace(/^\+?63/, "0").replace(/^(?!0)/, "0");
-      if (!phone.startsWith("0")) phone = `0${phone}`;
+    const count = await prisma.recipient.count({ where: { ownerId } });
+    if (count >= MAX_RECIPIENTS) {
+      throw new ApiError(400, `You can add up to ${MAX_RECIPIENTS} loved ones.`);
     }
 
     // Each loved one gets a funded custodial account so they can receive
@@ -65,18 +64,15 @@ class RecipientService {
     return recipient;
   }
 
-  /** Public recovery: find claim links for a loved one's mobile number. */
-  async findClaimLinksByPhone(phoneInput: string) {
-    const digits = phoneInput.replace(/[\s-]/g, "");
-    if (!/^(\+?63|0)?9\d{9}$/.test(digits)) {
-      throw new ApiError(400, "Please enter a valid mobile number.");
-    }
-    const phone = digits.replace(/^\+?63/, "0").replace(/^(?!0)/, "0");
-    const normalized = phone.startsWith("0") ? phone : `0${phone}`;
-
+  /**
+   * Public recovery: claim links for a loved one's mobile number, limited to
+   * safety nets set aside by the sender whose mobile number is also given.
+   */
+  async findClaimLinks(phone: string, senderPhone: string) {
     const nets = await prisma.safetyNet.findMany({
       where: {
-        recipient: { phone: normalized },
+        recipient: { phone },
+        owner: { phone: senderPhone },
         status: {
           in: [
             SafetyNetStatus.ACTIVE,
@@ -88,6 +84,7 @@ class RecipientService {
       },
       include: { recipient: true, owner: true },
       orderBy: { updatedAt: "desc" },
+      take: 20,
     });
 
     return nets.map((n) => ({
@@ -97,7 +94,7 @@ class RecipientService {
       amount: n.amount,
       status: n.status,
       claimCode: n.claimCode,
-      isOpen: n.status === "ACTIVE" && n.unlockAt.getTime() <= Date.now(),
+      isOpen: n.status === SafetyNetStatus.ACTIVE && n.unlockAt.getTime() <= Date.now(),
     }));
   }
 }

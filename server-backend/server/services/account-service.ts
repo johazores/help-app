@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { hashPin, verifyPin } from "@/lib/crypto";
-import { normalizeEmail, normalizePhone } from "@/server/services/user-service";
+import { normalizeEmail, normalizePhone, requirePin } from "@/lib/validation";
 import { sessionService } from "@/server/services/session-service";
 import { verificationService } from "@/server/services/verification-service";
 
@@ -10,7 +10,7 @@ const AVATAR_MAX_BYTES = 200 * 1024; // ~200 KB after client-side resize
 /** Profile, email, PIN, avatar, and recovery — the account-management core. */
 class AccountService {
   async updateName(userId: string, name: string) {
-    const trimmed = name.trim();
+    const trimmed = name.trim().slice(0, 60);
     if (trimmed.length < 2) throw new ApiError(400, "Please enter your name.");
     await prisma.user.update({ where: { id: userId }, data: { name: trimmed } });
     return { name: trimmed };
@@ -49,8 +49,8 @@ class AccountService {
     return { email, emailVerified: true };
   }
 
-  async changePin(userId: string, currentPin: string, newPin: string, keepSessionId: string) {
-    if (!/^\d{6}$/.test(newPin)) throw new ApiError(400, "Your new PIN must be 6 numbers.");
+  async changePin(userId: string, currentPin: string, newPinInput: string, keepSessionId: string) {
+    const newPin = requirePin(newPinInput, "Your new PIN must be 6 numbers.");
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !verifyPin(currentPin, user.pinHash)) {
       throw new ApiError(401, "Your current PIN doesn't match.");
@@ -80,9 +80,10 @@ class AccountService {
     return { sent: true };
   }
 
-  async resetPin(phoneInput: string, code: string, newPin: string) {
+  async resetPin(phoneInput: string, code: string, newPinInput: string) {
     const phone = normalizePhone(phoneInput);
-    if (!/^\d{6}$/.test(newPin)) throw new ApiError(400, "Your new PIN must be 6 numbers.");
+    const newPin = requirePin(newPinInput, "Your new PIN must be 6 numbers.");
+    if (!/^\d{6}$/.test(code)) throw new ApiError(400, "Please enter the 6-number code.");
     const user = await prisma.user.findUnique({ where: { phone } });
     if (!user) throw new ApiError(400, "That code doesn't match. Please check and try again.");
     await verificationService.consume(user.id, "PIN_RESET", code);

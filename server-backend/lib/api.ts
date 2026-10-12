@@ -1,13 +1,18 @@
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { Prisma } from "@prisma/client";
 import { verifyToken } from "@/lib/jwt";
 import { prisma } from "@/lib/prisma";
+import { log } from "@/lib/log";
 
 /** Thrown by services/handlers to produce a clean HTTP error. */
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  retryAfterSeconds?: number;
+  constructor(status: number, message: string, options: { retryAfterSeconds?: number } = {}) {
     super(message);
     this.status = status;
+    this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
 
@@ -27,7 +32,7 @@ export interface AuthedAdmin {
 const SEEN_THROTTLE_MS = 5 * 60 * 1000;
 
 const CORS_METHODS = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
-const CORS_HEADERS = "Content-Type, Authorization";
+const CORS_HEADERS = "Content-Type, Authorization, X-Request-Id";
 
 /** Comma-separated browser origins allowed to call the API directly (optional). */
 function allowedCorsOrigins(): string[] {
@@ -140,36 +145,121 @@ export function allowMethods(
   return true;
 }
 
+/** Constant-time string comparison for shared secrets. */
+export function secretsMatch(provided: unknown, expected: string): boolean {
+  if (typeof provided !== "string" || !expected) return false;
+  const a = createHash("sha256").update(provided).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+function headerValue(req: NextApiRequest, name: string): string {
+  const value = req.headers[name];
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
+}
+
+/**
+ * The end user's IP address, used only for rate limiting.
+ *
+ * - Behind the Sagip web proxy, the proxy forwards the visitor IP together
+ *   with PROXY_SHARED_SECRET; only then is the forwarded value trusted.
+ * - On Vercel, the platform overwrites X-Forwarded-For, so its first hop is
+ *   the real caller.
+ * - Otherwise the socket address is used; a spoofable header is never trusted.
+ */
+export function clientIp(req: NextApiRequest): string {
+  const sharedSecret = process.env.PROXY_SHARED_SECRET;
+  if (sharedSecret && secretsMatch(headerValue(req, "x-sagip-proxy-secret"), sharedSecret)) {
+    const forwarded = headerValue(req, "x-sagip-client-ip");
+    if (forwarded) return forwarded;
+  }
+  if (process.env.VERCEL === "1") {
+    const first = headerValue(req, "x-forwarded-for").split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.socket.remoteAddress ?? "unknown";
+}
+
+function prismaErrorToApiError(err: unknown): ApiError | null {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return null;
+  if (err.code === "P2002") return new ApiError(409, "That already exists. Please refresh and try again.");
+  if (err.code === "P2025") return new ApiError(404, "We couldn't find that. Please refresh and try again.");
+  return null;
+}
+
 /** Wraps a handler so thrown ApiErrors (and unexpected errors) become JSON. */
 export function handler(
   fn: (req: NextApiRequest, res: NextApiResponse) => Promise<void>,
 ) {
   return async (req: NextApiRequest, res: NextApiResponse) => {
+    const incomingId = headerValue(req, "x-request-id");
+    const requestId = /^[\w-]{8,64}$/.test(incomingId) ? incomingId : randomUUID();
+    res.setHeader("X-Request-Id", requestId);
+    // API responses can carry balances, claim links, or recovery keys:
+    // never let a browser, proxy, or CDN keep a copy.
+    res.setHeader("Cache-Control", "no-store");
+
     if (!applyCors(req, res)) return;
     try {
       await fn(req, res);
     } catch (err) {
-      if (err instanceof ApiError) {
-        res.status(err.status).json({ error: err.message });
+      const known = err instanceof ApiError ? err : prismaErrorToApiError(err);
+      if (known) {
+        if (known.retryAfterSeconds) res.setHeader("Retry-After", String(known.retryAfterSeconds));
+        if (known.status >= 500) {
+          log("error", "api.error", { requestId, method: req.method, path: req.url, status: known.status, error: err });
+        }
+        res.status(known.status).json({ error: known.message, requestId });
         return;
       }
-      console.error("Unhandled API error:", err);
-      res.status(500).json({ error: "Something went wrong on our side. Please try again." });
+      log("error", "api.unhandled", { requestId, method: req.method, path: req.url, error: err });
+      res.status(500).json({ error: "Something went wrong on our side. Please try again.", requestId });
     }
   };
 }
 
-// ---- Minimal in-memory rate limiter for auth endpoints ----------------------
-// Per-process; enough to blunt brute force on a single instance. Documented in
-// PRODUCTION.md as something to move to Redis for multi-instance deployments.
-const buckets = new Map<string, number[]>();
+// ---- Rate limiting -----------------------------------------------------------
+// Fixed-window counters stored in PostgreSQL, so limits hold across every
+// serverless instance and survive cold starts. Keys are hashed: phone numbers
+// and IPs used as limiter keys are never stored in readable form.
 
-export function rateLimit(key: string, max: number, windowMs: number): void {
-  const now = Date.now();
-  const hits = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
-  if (hits.length >= max) {
-    throw new ApiError(429, "Too many attempts. Please wait a moment and try again.");
+function bucketKey(scope: string, identity: string): string {
+  const digest = createHash("sha256").update(identity).digest("base64url");
+  return `${scope}:${digest}`;
+}
+
+/**
+ * Counts one attempt for `scope` + `identity` and throws 429 once more than
+ * `max` attempts land inside `windowMs`.
+ */
+export async function rateLimit(
+  scope: string,
+  identity: string,
+  max: number,
+  windowMs: number,
+): Promise<void> {
+  const key = bucketKey(scope, identity);
+  const now = new Date();
+  const resetAt = new Date(now.getTime() + windowMs);
+  const rows = await prisma.$queryRaw<{ hits: number; resetAt: Date }[]>`
+    INSERT INTO "RateLimitBucket" ("key", "hits", "resetAt")
+    VALUES (${key}, 1, ${resetAt})
+    ON CONFLICT ("key") DO UPDATE SET
+      "hits" = CASE WHEN "RateLimitBucket"."resetAt" <= ${now} THEN 1 ELSE "RateLimitBucket"."hits" + 1 END,
+      "resetAt" = CASE WHEN "RateLimitBucket"."resetAt" <= ${now} THEN ${resetAt} ELSE "RateLimitBucket"."resetAt" END
+    RETURNING "hits", "resetAt"
+  `;
+  const bucket = rows[0];
+  if (bucket && bucket.hits > max) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt.getTime() - now.getTime()) / 1000));
+    throw new ApiError(429, "Too many attempts. Please wait a moment and try again.", { retryAfterSeconds });
   }
-  hits.push(now);
-  buckets.set(key, hits);
+}
+
+/** Removes counters whose window ended more than a day ago. */
+export async function pruneRateLimits(): Promise<number> {
+  const { count } = await prisma.rateLimitBucket.deleteMany({
+    where: { resetAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+  });
+  return count;
 }
