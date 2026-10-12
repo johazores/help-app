@@ -43,7 +43,9 @@ built today vs. planned. Honest status markers: [Live] / [Planned].
 - [Live] If a transaction confirms but the database write fails, a
   `reconciliation.required` log event records the transaction hash and balance ids.
 - [Live] Paluwagan contributions are reserved before payment, so a double tap can't pay a
-  round twice.
+  round twice. The signed transaction hash is stored before submission; an interrupted
+  payment stays "in flight" until the network confirms it (then it counts as paid) or its
+  time bound passes without it applying (then the member can pay again).
 - [Planned] Admin dispute console (freeze/resolve) — schema-ready for paluwagan.
 
 ## Paluwagan-specific fraud
@@ -63,7 +65,9 @@ built today vs. planned. Honest status markers: [Live] / [Planned].
 ## Admin surface
 - [Live] Admins are a separate identity (username/email/password, own sessions, own token
   scope) — a compromised user account can never become admin. Admin sign-in is rate-limited
-  with non-enumerating errors. [Planned] 2FA for admins; audited admin action log.
+  per IP and per account (20 attempts per 15 minutes, high enough that a stranger can't
+  keep a real administrator locked out) with non-enumerating errors. [Planned] 2FA for
+  admins; audited admin action log.
 
 ## Known gaps (tracked, not hidden)
 Custodial signing on the server (external-wallet signing is proposed sprint work) ·
