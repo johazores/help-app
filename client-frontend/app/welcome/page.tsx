@@ -47,13 +47,13 @@ export default function WelcomePage() {
     <div className="flex min-h-screen flex-col bg-ink text-paper">
       <header className="container-page flex h-16 items-center justify-between">
         <Logo tone="paper" />
-        <button onClick={finish} className="text-[15px] font-semibold text-paper/70 hover:text-paper">
+        <button type="button" onClick={finish} className="min-h-11 px-2 text-[15px] font-semibold text-paper/80 hover:text-paper">
           Skip
         </button>
       </header>
 
-      <div className="container-page flex flex-1 flex-col items-center justify-center py-10 text-center">
-        <div className="w-full max-w-md">
+      <main className="container-page flex flex-1 flex-col items-center justify-center py-10 text-center">
+        <div className="w-full max-w-md" aria-live="polite">
           <div
             className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-white/10 text-[56px] animate-fade-up"
             aria-hidden="true"
@@ -63,8 +63,10 @@ export default function WelcomePage() {
           <h1 className="mt-8 font-display text-[32px] font-bold">{slide.title}</h1>
           <p className="mt-3 text-[19px] leading-relaxed text-paper/85">{slide.body}</p>
 
-          {/* Progress dots */}
-          <div className="mt-8 flex justify-center gap-2">
+          <p className="mt-8 text-[14px] font-semibold text-paper/70">
+            Step {index + 1} of {slides.length}
+          </p>
+          <div className="mt-3 flex justify-center gap-2" aria-hidden="true">
             {slides.map((_, i) => (
               <span
                 key={i}
@@ -75,7 +77,16 @@ export default function WelcomePage() {
             ))}
           </div>
 
-          <div className="mt-10">
+          <div className="mt-10 flex gap-3">
+            {index > 0 ? (
+              <Button
+                variant="ghost"
+                className="border-paper/30 text-paper hover:bg-white/10"
+                onClick={() => setIndex((i) => i - 1)}
+              >
+                Back
+              </Button>
+            ) : null}
             {last ? (
               <Button variant="secondary" fullWidth onClick={finish}>
                 Let&rsquo;s begin
@@ -87,7 +98,7 @@ export default function WelcomePage() {
             )}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { LoadErrorBanner } from "@/components/load-error-banner";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { buttonClasses } from "@/components/ui/button";
+import { PageSpinner } from "@/components/ui/spinner";
 import { authService } from "@/services/auth-service";
 import { configService } from "@/services/config-service";
 import { recipientService } from "@/services/recipient-service";
@@ -104,7 +104,7 @@ export default function FamilyReadinessCheckupPage() {
   if (loading && !profile) {
     return (
       <AppShell>
-        <div className="flex justify-center py-20 text-ink"><Spinner className="h-7 w-7" /></div>
+        <PageSpinner />
       </AppShell>
     );
   }
@@ -134,7 +134,7 @@ export default function FamilyReadinessCheckupPage() {
             {nextStep ? (
               <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[15px] text-paper/80">Recommended next: <strong className="text-paper">{nextStep.title}</strong></p>
-                <Link href={nextStep.href}><Button size="md" variant="secondary">{nextStep.action}</Button></Link>
+                <Link href={nextStep.href} className={buttonClasses({ size: "md", variant: "secondary" })}>{nextStep.action}</Link>
               </div>
             ) : (
               <p className="mt-5 text-[15px] text-paper/80">Your basic setup is complete. Review it regularly and privately share claim instructions with your family.</p>

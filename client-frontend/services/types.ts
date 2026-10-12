@@ -1,8 +1,6 @@
 export type SafetyNetStatus = "ACTIVE" | "OPENED" | "RECEIVED" | "GUARDED" | "BACKUP_RECEIVED" | "CLOSED";
 export type ActivityType = "CREATED" | "CHECKED_IN" | "OPENED_TO_FAMILY" | "RECEIVED" | "RECEIVER_CHECKED_IN" | "BACKUP_RECEIVED" | "CLOSED";
 
-export type Role = "USER" | "ROOT"; // retained for AdminUser display only
-
 export interface Profile {
   id: string;
   name: string;

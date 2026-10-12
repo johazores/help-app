@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { AppShell } from "@/components/app-shell";
 import { CardSkeleton } from "@/components/page-skeleton";
 import { Button } from "@/components/ui/button";
+import { NoticeBanner } from "@/components/notice-banner";
 import { authService } from "@/services/auth-service";
 import { walletService } from "@/services/wallet-service";
 import { ratesService } from "@/services/rates-service";
@@ -14,6 +15,8 @@ import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
 import { LoadErrorBanner } from "@/components/load-error-banner";
 import { DataUrlImage } from "@/components/ui/data-url-image";
 import { convertFromHeld, formatFiat, formatMoney } from "@/lib/format";
+import { useCopy } from "@/lib/use-copy";
+import { useNotice } from "@/lib/use-notice";
 import type { DepositInfo, Rates } from "@/services/types";
 
 const CurrencyConverter = dynamic(
@@ -38,11 +41,12 @@ export default function DepositPage() {
   const [rates, setRates] = useState<Rates | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [qrFailed, setQrFailed] = useState(false);
   const [adding, setAdding] = useState(false);
   const [topUpAmount, setTopUpAmount] = useState(500);
-  const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const { notice, say } = useNotice(8000);
+  const { copy, copied, failed: copyFailed } = useCopy();
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -50,7 +54,12 @@ export default function DepositPage() {
     try {
       const deposit = await walletService.depositInfo();
       setInfo(deposit);
-      setQr(await generateQr(deposit.address));
+      generateQr(deposit.address)
+        .then((code) => {
+          setQr(code);
+          setQrFailed(false);
+        })
+        .catch(() => setQrFailed(true));
 
       try {
         setRates(await ratesService.get());
@@ -74,20 +83,9 @@ export default function DepositPage() {
     void load();
   }, [router, load]);
 
-  async function copy() {
-    if (!info) return;
-    try {
-      await navigator.clipboard.writeText(info.address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setNotice({ text: "Copying isn't available in this browser. Press and hold the address instead.", bad: true });
-    }
-  }
-
   async function addFunds() {
+    if (adding) return;
     setAdding(true);
-    setNotice(null);
     try {
       const result = await walletService.addTestFunds(topUpAmount);
       setInfo((previous) => (previous ? { ...previous, balance: result.balance } : previous));
@@ -99,16 +97,13 @@ export default function DepositPage() {
         setRates(null);
       }
 
-      setNotice({
-        text: result.switchedAsset
-          ? `Added ${topUpAmount} test ${result.asset}. This deployment had no funded USDC treasury, so Sagip safely switched the test environment to XLM.`
-          : `Added ${topUpAmount} test ${result.asset} to your wallet.`,
-      });
+      say(
+        result.switchedAsset
+          ? `Added ${topUpAmount.toLocaleString("en-PH")} test funds. This preview now uses a test currency that can always be topped up.`
+          : `Added ${topUpAmount.toLocaleString("en-PH")} test funds to your wallet.`,
+      );
     } catch (error) {
-      setNotice({
-        text: error instanceof Error ? error.message : "Couldn't add test funds. Please try again.",
-        bad: true,
-      });
+      say(loadErrorMessage(error), true);
     } finally {
       setAdding(false);
     }
@@ -127,7 +122,6 @@ export default function DepositPage() {
   }
 
   const php = rates?.rates.PHP;
-  const stable = rates?.base === "USDC";
 
   return (
     <AppShell>
@@ -135,22 +129,16 @@ export default function DepositPage() {
         <LoadErrorBanner message={loadError} onRetry={() => void load()} />
       ) : (
         <>
-          <Link href="/home" className="text-[15px] font-semibold text-subtle hover:text-ink">← Back</Link>
-          <h1 className="mt-3 font-display text-[30px] font-bold text-ink sm:text-[36px]">Add funds</h1>
+          <Link href="/home" className="inline-flex min-h-11 items-center text-[15px] font-semibold text-subtle hover:text-ink">
+            ← Back
+          </Link>
+          <h1 className="mt-1 font-display text-[30px] font-bold text-ink sm:text-[36px]">Add funds</h1>
           <p className="mt-2 max-w-xl text-[17px] text-body">
-            Receive test funds at your wallet address or use an instant test top-up. These balances have no real-world cash value.
+            This preview uses test funds with no real-world cash value. Add some instantly to try every
+            part of Sagip.
           </p>
 
-          {notice ? (
-            <div
-              role="status"
-              className={`mt-5 max-w-3xl rounded-xl px-4 py-3 text-[15px] font-medium ${
-                notice.bad ? "bg-danger/10 text-danger" : "bg-sage/15 text-ink"
-              }`}
-            >
-              {notice.text}
-            </div>
-          ) : null}
+          <NoticeBanner notice={notice} className="mt-5 max-w-3xl" />
 
           <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_1fr]">
             <div className="space-y-6">
@@ -159,11 +147,7 @@ export default function DepositPage() {
                 <p className="mt-1 break-words font-display text-[clamp(30px,8vw,40px)] font-bold leading-none">
                   {formatMoney(info?.balance ?? "0")}
                 </p>
-                {rates ? (
-                  <p className="mt-1 text-[13px] text-paper/60">
-                    Test {rates.base}{stable ? " · stable-value preview" : " · network asset"}
-                  </p>
-                ) : null}
+                <p className="mt-1 text-[13px] text-paper/70">Test funds · no real-world value</p>
                 {php !== undefined ? (
                   <p className="mt-2 text-[15px] text-marigold-soft">
                     about {formatFiat(convertFromHeld(info?.balance ?? "0", php), "PHP")} for planning
@@ -174,15 +158,16 @@ export default function DepositPage() {
               <div className="card p-6">
                 <h2 className="text-[18px] font-bold text-ink">Add test funds instantly</h2>
                 <p className="mt-1 text-[15px] leading-relaxed text-body">
-                  Choose a practice amount to test safety nets, gifts, and claims. This action is available only on testnet.
+                  Choose a practice amount to try safety nets, gifts, and claims.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2" aria-label="Choose test top-up amount">
+                <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Test top-up amount">
                   {TOP_UP_AMOUNTS.map((amount) => (
                     <button
                       key={amount}
                       type="button"
                       onClick={() => setTopUpAmount(amount)}
-                      className={`rounded-full border px-4 py-2 text-[14px] font-semibold ${
+                      aria-pressed={topUpAmount === amount}
+                      className={`min-h-11 rounded-full border px-5 text-[15px] font-semibold ${
                         topUpAmount === amount
                           ? "border-ink bg-ink text-paper"
                           : "border-line bg-white text-ink hover:bg-ink/5"
@@ -199,27 +184,41 @@ export default function DepositPage() {
             </div>
 
             <div className="card p-6">
-              <h2 className="text-[18px] font-bold text-ink">Receive to your address</h2>
-              <p className="mt-1 text-[15px] text-body">Have someone send compatible testnet funds to the address below, or scan the code.</p>
+              <h2 className="text-[18px] font-bold text-ink">Receive from another wallet</h2>
+              <p className="mt-1 text-[15px] text-body">
+                Someone with test funds in another app can send them to this receiving code, or scan it.
+              </p>
               <div className="mt-5 flex flex-col items-center">
                 {qr ? (
                   <DataUrlImage
                     src={qr}
-                    alt="Your deposit address as a scannable code"
+                    alt="Your receiving code as a scannable square"
                     className="rounded-xl border border-line"
                   />
+                ) : qrFailed ? (
+                  <p className="text-[14px] text-subtle">The scannable code couldn&rsquo;t be drawn. Use the text below instead.</p>
                 ) : (
                   <div className="h-[220px] w-[220px] animate-pulse rounded-xl bg-line/60" />
                 )}
               </div>
               <div className="mt-5">
-                <p className="field-label">Your address</p>
+                <p className="field-label" id="receiving-code-label">Your receiving code</p>
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <code className="min-w-0 flex-1 break-all rounded-xl border border-line bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink">
+                  <code
+                    aria-labelledby="receiving-code-label"
+                    className="min-w-0 flex-1 break-all rounded-xl border border-line bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink"
+                  >
                     {info?.address}
                   </code>
-                  <Button size="md" variant="secondary" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</Button>
+                  <Button size="md" variant="secondary" onClick={() => info && void copy(info.address, "address")}>
+                    {copied === "address" ? "Copied" : "Copy"}
+                  </Button>
                 </div>
+                {copyFailed ? (
+                  <p className="mt-2 text-[14px] text-danger" role="alert">
+                    Couldn&rsquo;t copy automatically — press and hold the code to copy it.
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>

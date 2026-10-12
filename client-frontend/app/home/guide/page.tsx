@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
+import { buttonClasses } from "@/components/ui/button";
 
 const steps = [
   {
@@ -64,8 +64,8 @@ export default function GuidePage() {
       </p>
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-        <Link href="/home/tools/checkup"><Button size="md">Check family readiness</Button></Link>
-        <Link href="/home/trust"><Button size="md" variant="secondary">Review trust &amp; safety</Button></Link>
+        <Link href="/home/tools/checkup" className={buttonClasses({ size: "md" })}>Check family readiness</Link>
+        <Link href="/home/trust" className={buttonClasses({ size: "md", variant: "secondary" })}>Review trust &amp; safety</Link>
       </div>
 
       <ol className="mt-8 max-w-2xl space-y-4">
@@ -91,7 +91,7 @@ export default function GuidePage() {
       </div>
 
       <div className="mt-10 max-w-2xl">
-        <Link href="/home/new"><Button>Set up a test safety net</Button></Link>
+        <Link href="/home/new" className={buttonClasses()}>Set up a test safety net</Link>
       </div>
     </AppShell>
   );

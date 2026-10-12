@@ -50,7 +50,8 @@ Page (app/**/*.tsx)
 ## UI conventions
 
 - Interactive pages are **`"use client"`** components (auth checks, forms, timers).
-- Reuse **`AppShell`**, **`Button`**, **`Input`**, **`Field`**, **`Card`**, **`Badge`**, **`Spinner`** from `components/ui/`.
+- Reuse **`AppShell`**, **`Button`** (and `buttonClasses` for links), **`Input`**, **`PinInput`**, **`Field`**, **`Dialog`**, **`ChoiceGrid`**, **`Badge`**, **`PageSpinner`** from `components/ui/`; `RecipientForm`, `NoticeBanner`, `LoadErrorBanner` from `components/`.
+- Use `useCopy` and `useNotice` from `lib/` instead of hand-rolled clipboard calls and timers. Money actions must disable every other money action while one is in flight.
 - Money display: **`formatMoney`**, **`countdown`**, **`windowProgress`** from `lib/format.ts`.
 - Mobile-first layout; plain language for non-technical users (including elderly family).
 - Admin UI (`/admin`) uses **`adminAuthService`** / **`adminService`** with admin token scope.

@@ -139,5 +139,4 @@ class ApiClient {
   }
 }
 
-export { ApiRequestError };
 export const apiClient = new ApiClient();

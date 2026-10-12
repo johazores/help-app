@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Logo } from "@/components/ui/logo";
@@ -43,7 +43,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isRoot, setIsRoot] = useState(false);
   const [serverDown, setServerDown] = useState(false);
-  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [config, setConfig] = useState<AppConfig | null>(() => configService.peek());
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+
+  // The drawer behaves like a modal: focus moves in, Escape closes it, and
+  // focus returns to the menu button afterwards.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    closeButton.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const opener = menuButton.current;
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
+  }, [drawerOpen]);
 
   useEffect(() => {
     setIsRoot(adminAuthService.isSignedIn());
@@ -104,7 +122,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     : "border-sage/40 bg-sage/15 text-ink"
                 }`}
               >
-                {isTestnet ? "Testnet preview" : config.network}
+                {isTestnet ? "Preview · test money" : config.network}
               </Link>
             ) : null}
           </div>
@@ -114,6 +132,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
+                aria-current={isActive(pathname, href) ? "page" : undefined}
                 className={`rounded-lg px-3 py-2 text-[15px] font-semibold ${
                   isActive(pathname, href) ? "bg-ink/10 text-ink" : "text-subtle hover:text-ink"
                 }`}
@@ -121,14 +140,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {label}
               </Link>
             ))}
-            <button onClick={signOut} className="ml-2 text-[15px] font-semibold text-subtle hover:text-ink">
+            <button type="button" onClick={signOut} className="ml-2 min-h-11 px-2 text-[15px] font-semibold text-subtle hover:text-ink">
               Sign out
             </button>
           </nav>
 
           <button
+            ref={menuButton}
+            type="button"
             className="flex h-11 w-11 items-center justify-center rounded-lg text-ink lg:hidden"
             aria-label="Open menu"
+            aria-expanded={drawerOpen}
+            aria-controls="app-drawer"
             onClick={() => setDrawerOpen(true)}
           >
             <MenuIcon />
@@ -147,22 +170,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {drawerOpen ? (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button
-            aria-label="Close menu"
-            className="absolute inset-0 bg-ink/40"
-            onClick={() => setDrawerOpen(false)}
-          />
-          <div className="absolute right-0 top-0 flex h-full w-[82%] max-w-xs flex-col overflow-y-auto bg-paper p-6 shadow-lift animate-fade-up">
+          <div aria-hidden="true" className="absolute inset-0 bg-ink/40" onClick={() => setDrawerOpen(false)} />
+          <div
+            id="app-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
+            className="absolute right-0 top-0 flex h-full w-[82%] max-w-xs flex-col overflow-y-auto bg-paper p-6 shadow-lift animate-fade-up"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <Logo />
                 {config ? (
                   <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-subtle">
-                    {isTestnet ? "Testnet preview" : config.network}
+                    {isTestnet ? "Preview · test money" : config.network}
                   </p>
                 ) : null}
               </div>
               <button
+                ref={closeButton}
+                type="button"
                 className="flex h-11 w-11 items-center justify-center rounded-lg text-ink"
                 aria-label="Close menu"
                 onClick={() => setDrawerOpen(false)}
@@ -176,6 +203,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <Link
                   key={href}
                   href={href}
+                  aria-current={isActive(pathname, href) ? "page" : undefined}
                   onClick={() => setDrawerOpen(false)}
                   className={`flex items-center gap-3 rounded-xl px-4 py-3.5 text-[17px] font-semibold ${
                     isActive(pathname, href) ? "bg-ink text-paper" : "text-ink hover:bg-ink/5"
@@ -204,6 +232,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
 
             <button
+              type="button"
               onClick={signOut}
               className="mt-auto rounded-xl border border-line px-4 py-3.5 text-[16px] font-semibold text-subtle hover:text-ink"
             >
@@ -215,7 +244,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <main className="container-page py-8 pb-28 sm:py-10 sm:pb-10">{children}</main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card/95 backdrop-blur sm:hidden">
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-card/95 backdrop-blur sm:hidden">
         <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
           <TabLink href="/home" label="Home" active={isActive(pathname, "/home")}>
             <HomeIcon className="h-6 w-6" />
@@ -257,7 +286,8 @@ function TabLink({
   return (
     <Link
       href={href}
-      className={`flex flex-col items-center gap-1 py-1 ${active ? "text-ink" : "text-subtle"}`}
+      aria-current={active ? "page" : undefined}
+      className={`flex min-h-11 flex-col items-center gap-1 py-1 ${active ? "text-ink" : "text-subtle"}`}
     >
       {children}
       <span className="text-[11px] font-semibold">{label}</span>

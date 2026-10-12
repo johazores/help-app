@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
+import { buttonClasses } from "@/components/ui/button";
 
 const tools = [
   {
@@ -89,7 +89,7 @@ export default function ToolsPage() {
                 Verify recovery details, add a loved one, create one core safety net, and add a backup person before using advanced tools.
               </p>
             </div>
-            <Link href="/home/tools/checkup" className="shrink-0"><Button variant="secondary">Start checkup</Button></Link>
+            <Link href="/home/tools/checkup" className={`shrink-0 ${buttonClasses({ variant: "secondary" })}`}>Start checkup</Link>
           </div>
         </section>
 
@@ -125,7 +125,7 @@ export default function ToolsPage() {
         <section className="mt-8 rounded-2xl border border-marigold/50 bg-marigold/10 p-6">
           <h2 className="text-[18px] font-bold text-ink">Use these as test plans, not guaranteed financial protection</h2>
           <p className="mt-2 text-[15px] leading-relaxed text-body">
-            The current environment uses Stellar testnet. Paluwagan needs dispute and reminder controls; cash-out needs a licensed partner; and a missed check-in is not proof of an emergency.
+            This preview uses test money. Paluwagan needs dispute and reminder controls; cash-out needs a licensed partner; and a missed check-in is not proof of an emergency.
           </p>
           <Link href="/home/trust" className="mt-3 inline-block text-[15px] font-semibold text-ink underline">Review trust and current limitations</Link>
         </section>

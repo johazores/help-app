@@ -4,59 +4,52 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
-import { Spinner } from "@/components/ui/spinner";
+import { PageSpinner } from "@/components/ui/spinner";
+import { LoadErrorBanner } from "@/components/load-error-banner";
 import { adminAuthService } from "@/services/admin-auth-service";
 import { adminService } from "@/services/admin-service";
-import { formatDateTime, formatMoney } from "@/lib/format";
-import type { AdminOverview, SafetyNetStatus } from "@/services/types";
+import { isUnauthorized, loadErrorMessage } from "@/lib/api-errors";
+import { formatDateTime, formatMoney, statusLabel, statusTone } from "@/lib/format";
+import type { AdminOverview } from "@/services/types";
 
 function shortKey(key: string | null): string {
   if (!key) return "—";
   return `${key.slice(0, 4)}…${key.slice(-4)}`;
 }
 
-function statusTone(status: SafetyNetStatus): "active" | "open" | "received" | "closed" {
-  if (status === "RECEIVED") return "received";
-  if (status === "CLOSED") return "closed";
-  if (status === "OPENED") return "open";
-  return "active";
-}
-
-function statusText(status: SafetyNetStatus): string {
-  if (status === "RECEIVED") return "Received";
-  if (status === "CLOSED") return "Taken back";
-  if (status === "OPENED") return "Open";
-  return "Watching";
-}
 
 export default function AdminPage() {
   const router = useRouter();
   const [data, setData] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!adminAuthService.isSignedIn()) {
       router.replace("/admin/sign-in");
       return;
     }
+    setError(null);
     adminService
       .overview()
       .then(setData)
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Couldn't load admin data.");
-        adminAuthService.signOut();
-        router.replace("/admin/sign-in");
+        // Only an expired or revoked admin session signs the admin out.
+        if (isUnauthorized(err)) {
+          void adminAuthService.signOut();
+          router.replace("/admin/sign-in");
+          return;
+        }
+        setError(loadErrorMessage(err));
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [router, attempt]);
 
   if (loading) {
     return (
       <AppShell>
-        <div className="flex justify-center py-20 text-ink">
-          <Spinner className="h-7 w-7" />
-        </div>
+        <PageSpinner />
       </AppShell>
     );
   }
@@ -64,7 +57,7 @@ export default function AdminPage() {
   if (error || !data) {
     return (
       <AppShell>
-        <p className="text-[17px] text-body">{error ?? "No data."}</p>
+        <LoadErrorBanner message={error ?? "No data."} onRetry={() => setAttempt((n) => n + 1)} />
       </AppShell>
     );
   }
@@ -153,7 +146,9 @@ export default function AdminPage() {
               </div>
               <div className="flex shrink-0 items-center gap-4">
                 <span className="font-display text-[18px] font-bold text-ink">{formatMoney(n.amount)}</span>
-                <Badge tone={statusTone(n.status)}>{statusText(n.status)}</Badge>
+                <Badge tone={statusTone(n.status, n.status === "ACTIVE" && Date.parse(n.unlockAt) <= Date.now())}>
+                  {statusLabel(n.status, n.status === "ACTIVE" && Date.parse(n.unlockAt) <= Date.now())}
+                </Badge>
               </div>
             </div>
           ))}

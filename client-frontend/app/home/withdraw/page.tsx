@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
+import { buttonClasses } from "@/components/ui/button";
 
-/** Cash-out shell — honest preview until a SEP-24 anchor partner is wired in. */
+/** Cash-out preview — stays honest until a licensed cash-out partner is connected. */
 export default function WithdrawPage() {
   return (
     <AppShell>
@@ -22,7 +22,7 @@ export default function WithdrawPage() {
           <p className="text-[17px] font-bold text-ink">Coming soon</p>
           <p className="mt-2 text-[15px] leading-relaxed text-body">
             Receiving money in Sagip works end-to-end today. Moving it to pesos requires a licensed
-            payment partner (Stellar SEP-24 anchor) — we&rsquo;re sequencing that as the next production
+            payment partner — we&rsquo;re sequencing that as the next production
             milestone, not hiding it.
           </p>
         </div>
@@ -46,10 +46,8 @@ export default function WithdrawPage() {
             </Link>{" "}
             at any time.
           </p>
-          <Link href="/home/deposit" className="mt-4 inline-block">
-            <Button size="md" variant="ghost">
-              Add funds instead
-            </Button>
+          <Link href="/home/deposit" className={`mt-4 ${buttonClasses({ size: "md", variant: "ghost" })}`}>
+            Add funds instead
           </Link>
         </div>
       </div>

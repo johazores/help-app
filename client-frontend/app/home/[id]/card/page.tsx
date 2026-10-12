@@ -5,16 +5,21 @@ import { useParams, useRouter } from "next/navigation";
 import { DataUrlImage } from "@/components/ui/data-url-image";
 import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { PageSpinner } from "@/components/ui/spinner";
+import { LoadErrorBanner } from "@/components/load-error-banner";
 import { authService } from "@/services/auth-service";
 import { safetyNetService } from "@/services/safety-net-service";
+import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
 import { formatMoney } from "@/lib/format";
 import type { SafetyNetCardSummary } from "@/services/types";
 
+function claimUrl(claimCode: string): string {
+  return `${window.location.origin}/claim/${claimCode}`;
+}
+
 async function generateClaimQr(claimCode: string): Promise<string> {
   const QRCode = (await import("qrcode")).default;
-  const url = `${window.location.origin}/claim/${claimCode}`;
-  return QRCode.toDataURL(url, {
+  return QRCode.toDataURL(claimUrl(claimCode), {
     margin: 1,
     width: 240,
     color: { dark: "#0C3B3A", light: "#FFFFFF" },
@@ -28,26 +33,42 @@ export default function ClaimCardPage() {
   const id = params?.id ?? "";
   const [net, setNet] = useState<SafetyNetCardSummary | null>(null);
   const [qr, setQr] = useState<string | null>(null);
+  const [qrFailed, setQrFailed] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!authService.isSignedIn()) {
       router.replace("/sign-in");
       return;
     }
+    setLoadError(null);
     safetyNetService
       .cardSummary(id)
       .then((n) => {
         setNet(n);
-        return generateClaimQr(n.claimCode).then(setQr);
+        generateClaimQr(n.claimCode)
+          .then(setQr)
+          .catch(() => setQrFailed(true));
       })
-      .catch(() => router.replace("/home"));
-  }, [id, router]);
+      .catch((err) => {
+        if (handleProtectedLoadError(err, router, () => authService.signOut()) === "error") {
+          setLoadError(loadErrorMessage(err));
+        }
+      });
+  }, [id, router, attempt]);
 
   if (!net) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-paper text-ink">
-        <Spinner className="h-7 w-7" />
-      </div>
+      <main className="min-h-screen bg-paper px-5 py-8">
+        {loadError ? (
+          <div className="mx-auto max-w-md">
+            <LoadErrorBanner message={loadError} onRetry={() => setAttempt((n) => n + 1)} />
+          </div>
+        ) : (
+          <PageSpinner />
+        )}
+      </main>
     );
   }
 
@@ -55,7 +76,7 @@ export default function ClaimCardPage() {
     <div className="min-h-screen bg-paper py-8">
       <div className="mx-auto max-w-md px-5">
         <div className="print:hidden">
-          <button onClick={() => router.back()} className="text-[15px] font-semibold text-subtle hover:text-ink">← Back</button>
+          <button type="button" onClick={() => router.back()} className="min-h-11 text-[15px] font-semibold text-subtle hover:text-ink">← Back</button>
           <h1 className="mt-2 font-display text-[26px] font-bold text-ink">Print a card for {net.forName}</h1>
           <p className="mt-1 text-[15px] text-body">
             Print this and give it to them, so the link is never lost in messages.
@@ -71,9 +92,10 @@ export default function ClaimCardPage() {
           <p className="mt-3 break-words font-display text-[36px] font-bold text-ink">{formatMoney(net.amount)}</p>
           {qr ? (
             <DataUrlImage src={qr} alt="Scan to open your link" className="mx-auto mt-5 rounded-xl border border-line" />
-          ) : (
+          ) : qrFailed ? null : (
             <div className="mx-auto mt-5 h-[240px] w-[240px] animate-pulse rounded-xl bg-line/60" />
           )}
+          <p className="mt-4 break-all font-mono text-[12px] text-subtle">{claimUrl(net.claimCode)}</p>
           <div className="mt-5 text-left text-[14px] leading-relaxed text-body">
             <p className="font-semibold text-ink">How to use this card:</p>
             <p className="mt-1">1. Open your phone&rsquo;s camera and point it at the square code.</p>

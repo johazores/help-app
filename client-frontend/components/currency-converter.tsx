@@ -2,16 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ratesService } from "@/services/rates-service";
-import { CURRENCIES, formatFiat } from "@/lib/format";
+import { CURRENCIES, decimalInput, formatFiat } from "@/lib/format";
 import type { Rates } from "@/services/types";
 
-const HELD_LABEL: Record<string, string> = {
-  USDC: "Your funds (USDC)",
-  XLM: "Stellar (your funds)",
-};
-
-function heldUnit(base: string): { code: string; label: string } {
-  return { code: base, label: HELD_LABEL[base] ?? "Your funds" };
+/** What a person sees for a unit: their Sagip balance is just "Funds". */
+function unitName(code: string, base: string): string {
+  return code === base ? "Funds" : code;
 }
 
 /** Convert through the held asset base (USDC ≈ 1 USD, or XLM). */
@@ -37,12 +33,6 @@ function formatUnit(value: number, code: string, base: string): string {
     return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
   }
   return formatFiat(value, code);
-}
-
-function decimalInput(value: string): string {
-  const cleaned = value.replace(/[^\d.]/g, "");
-  const [whole = "", ...decimals] = cleaned.split(".");
-  return decimals.length > 0 ? `${whole}.${decimals.join("")}` : whole;
 }
 
 export function CurrencyConverter({
@@ -111,10 +101,11 @@ export function CurrencyConverter({
 
   const available = useMemo(() => {
     const units = [
-      heldUnit(base),
-      ...CURRENCIES.filter((currency) => currency.code !== base).map((currency) => ({
+      { code: base, label: "Your Sagip funds" },
+      // The held asset's own code (e.g. the digital dollar) is shown only as "Funds".
+      ...CURRENCIES.filter((currency) => currency.code !== base && currency.code !== "USDC").map((currency) => ({
         code: currency.code,
-        label: `${currency.code} — ${currency.label}`,
+        label: currency.label,
       })),
     ];
     if (!rates) return units;
@@ -143,7 +134,11 @@ export function CurrencyConverter({
 
   const quickList = rates
     ? CURRENCIES.filter(
-        (currency) => currency.code !== from && currency.code !== to && rates.rates[currency.code] !== undefined,
+        (currency) =>
+          currency.code !== from &&
+          currency.code !== to &&
+          currency.code !== "USDC" &&
+          rates.rates[currency.code] !== undefined,
       ).slice(0, 6)
     : [];
 
@@ -191,7 +186,7 @@ export function CurrencyConverter({
                 aria-label="Convert from"
               >
                 {available.map((unit) => (
-                  <option key={unit.code} value={unit.code}>{unit.code}</option>
+                  <option key={unit.code} value={unit.code} title={unit.label}>{unitName(unit.code, base)}</option>
                 ))}
               </select>
             </div>
@@ -202,7 +197,7 @@ export function CurrencyConverter({
               type="button"
               onClick={swap}
               aria-label="Swap currencies"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-paper text-ink hover:bg-ink hover:text-paper"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-paper text-ink hover:bg-ink hover:text-paper"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M7 4v13M7 4 4 7M7 4l3 3M17 20V7M17 20l3-3M17 20l-3-3" />
@@ -227,7 +222,7 @@ export function CurrencyConverter({
                 aria-label="Convert to"
               >
                 {available.map((unit) => (
-                  <option key={unit.code} value={unit.code}>{unit.code}</option>
+                  <option key={unit.code} value={unit.code} title={unit.label}>{unitName(unit.code, base)}</option>
                 ))}
               </select>
             </div>
@@ -235,7 +230,12 @@ export function CurrencyConverter({
 
           {rates ? (
             <p className="mt-3 text-[14px] text-subtle">
-              1 {from} = {formatUnit(perOne, to, base)} · estimates refresh every few minutes
+              1 {unitName(from, base)} = {formatUnit(perOne, to, base)} · estimates refresh every few minutes
+            </p>
+          ) : null}
+          {rates && error ? (
+            <p className="mt-2 text-[14px] text-subtle" role="status">
+              Couldn&rsquo;t refresh the rates just now — these are the last known estimates.
             </p>
           ) : null}
 

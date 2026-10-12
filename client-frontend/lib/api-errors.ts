@@ -13,9 +13,9 @@ export function isUnauthorized(err: unknown): boolean {
   return err instanceof ApiRequestError && err.status === 401;
 }
 
+/** The API's "set up a wallet first" answer (409 from any money action without a wallet). */
 export function isWalletRequired(err: unknown): boolean {
-  if (!(err instanceof ApiRequestError)) return false;
-  return err.message.toLowerCase().includes("wallet");
+  return err instanceof ApiRequestError && err.status === 409 && /don't have a wallet yet/i.test(err.message);
 }
 
 export function loadErrorMessage(err: unknown): string {
