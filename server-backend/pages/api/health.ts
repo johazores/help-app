@@ -5,11 +5,14 @@ import { settingsService } from "@/server/services/settings-service";
 
 const HORIZON_TIMEOUT_MS = 3_000;
 const HORIZON_CACHE_MS = 30_000;
+// A failed check is retried soon, so one slow response doesn't stick.
+const HORIZON_FAILURE_CACHE_MS = 5_000;
 let horizonCheck: { ok: boolean; ms: number; at: number } | null = null;
 
 /** Pings Horizon at most every 30 seconds per instance so monitors stay cheap. */
 async function horizonReachable(horizonUrl: string): Promise<{ ok: boolean; ms: number }> {
-  if (horizonCheck && Date.now() - horizonCheck.at < HORIZON_CACHE_MS) return horizonCheck;
+  const ttl = horizonCheck?.ok ? HORIZON_CACHE_MS : HORIZON_FAILURE_CACHE_MS;
+  if (horizonCheck && Date.now() - horizonCheck.at < ttl) return horizonCheck;
   const started = Date.now();
   let ok = false;
   try {
