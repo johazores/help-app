@@ -10,6 +10,8 @@ import {
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
+import { log } from "@/lib/log";
+import { resultCodesOf, submitFailureToApiError } from "@/lib/stellar-errors";
 import { settingsService } from "@/server/services/settings-service";
 
 /**
@@ -18,14 +20,53 @@ import { settingsService } from "@/server/services/settings-service";
  *
  * Held asset defaults to USDC on testnet (stable savings); XLM is kept only
  * for network fees. Configure via Setting table (see prisma/seed.ts).
+ * Operations on an existing safety net always use the asset that net was
+ * created with, so a later configuration change can never re-create a
+ * balance in a different asset.
  */
 
 const WELCOME_USDC = "10000.0000000";
 const BALANCE_CACHE_MS = 20_000;
+const FRIENDBOT_TIMEOUT_MS = 30_000;
+const TX_TIMEOUT_SECONDS = 60;
+const MAX_TRUST_LIMIT = "922337203685.4775807";
+
+const servers = new Map<string, Horizon.Server>();
 
 async function server(): Promise<Horizon.Server> {
   const { horizonUrl } = await settingsService.stellar();
-  return new Horizon.Server(horizonUrl);
+  let svr = servers.get(horizonUrl);
+  if (!svr) {
+    svr = new Horizon.Server(horizonUrl);
+    servers.set(horizonUrl, svr);
+  }
+  return svr;
+}
+
+function unixSeconds(date: Date): string {
+  return Math.floor(date.getTime() / 1000).toString();
+}
+
+/**
+ * The two-claimant shape every Sagip balance uses: one party may claim at any
+ * time, the other only once `unlockAt` has passed.
+ */
+function timeLockedClaimants(
+  unconditionalPublicKey: string,
+  timeLockedPublicKey: string,
+  unlockAt: Date,
+): Claimant[] {
+  return [
+    new Claimant(unconditionalPublicKey, Claimant.predicateUnconditional()),
+    new Claimant(
+      timeLockedPublicKey,
+      Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unixSeconds(unlockAt))),
+    ),
+  ];
+}
+
+function isNotFound(err: unknown): boolean {
+  return (err as { response?: { status?: number } })?.response?.status === 404;
 }
 
 export interface StoredAccount {
@@ -36,10 +77,15 @@ export interface StoredAccount {
 class StellarService {
   private balanceCache = new Map<string, { balance: string; at: number }>();
 
-  /** The asset safety nets and balances use (USDC in production-shaped testnet). */
-  async heldAsset(): Promise<Asset> {
-    const cfg = await settingsService.asset();
-    if (cfg.heldAsset === "USDC") {
+  /** The asset code new safety nets and balances use (from settings). */
+  async heldAssetCode(): Promise<"XLM" | "USDC"> {
+    return (await settingsService.asset()).heldAsset;
+  }
+
+  /** Resolves a stored asset code ("XLM" or "USDC") to a Stellar asset. */
+  async assetFor(code: string): Promise<Asset> {
+    if (code === "USDC") {
+      const cfg = await settingsService.asset();
       return new Asset(cfg.usdcCode, cfg.usdcIssuer);
     }
     return Asset.native();
@@ -56,16 +102,20 @@ class StellarService {
     return Keypair.fromSecret(secret);
   }
 
-  /** Creates a keypair, funds it via Friendbot (testnet), and stores it encrypted. */
-  async createFundedAccount(): Promise<StoredAccount> {
+  private async fundWithFriendbot(publicKey: string, failureMessage: string): Promise<void> {
     const { friendbotUrl } = await settingsService.stellar();
-    const keypair = Keypair.random();
-
-    const res = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(keypair.publicKey())}`);
-    if (!res.ok) {
-      throw new ApiError(502, "We couldn't set up the account right now. Please try again.");
+    try {
+      const res = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(publicKey)}`, {
+        signal: AbortSignal.timeout(FRIENDBOT_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`Friendbot returned ${res.status}`);
+    } catch (error) {
+      log("warn", "stellar.friendbot_failed", { publicKey, error });
+      throw new ApiError(502, failureMessage);
     }
+  }
 
+  private async storeAccount(keypair: Keypair): Promise<StoredAccount> {
     const enc = encryptSecret(keypair.secret());
     const account = await prisma.stellarAccount.create({
       data: {
@@ -75,19 +125,29 @@ class StellarService {
         encryptionTag: enc.tag,
       },
     });
+    return { id: account.id, publicKey: account.publicKey };
+  }
 
+  /** Creates a keypair, funds it via Friendbot (testnet), and stores it encrypted. */
+  async createFundedAccount(): Promise<StoredAccount> {
+    const keypair = Keypair.random();
+    await this.fundWithFriendbot(
+      keypair.publicKey(),
+      "We couldn't set up the account right now. Please try again.",
+    );
+    const account = await this.storeAccount(keypair);
     await this.ensureUsdcReady(account.id, account.publicKey);
     await this.sendWelcomeFunds(account.publicKey);
-
-    return { id: account.id, publicKey: account.publicKey };
+    return account;
   }
 
   async importAccount(secretKey: string): Promise<StoredAccount> {
     let keypair: Keypair;
     try {
-      keypair = Keypair.fromSecret(secretKey.trim());
+      // Keys copied by hand are often written in groups; spaces are not part of the key.
+      keypair = Keypair.fromSecret(secretKey.replace(/\s+/g, "").toUpperCase());
     } catch {
-      throw new ApiError(400, "That doesn't look like a valid recovery key. It starts with S and has 56 characters.");
+      throw new ApiError(400, "That doesn't look like a valid recovery key. Please check it and try again.");
     }
 
     const existing = await prisma.stellarAccount.findUnique({
@@ -100,36 +160,32 @@ class StellarService {
     const svr = await server();
     try {
       await svr.loadAccount(keypair.publicKey());
-    } catch {
-      const { friendbotUrl } = await settingsService.stellar();
-      const res = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(keypair.publicKey())}`);
-      if (!res.ok) {
-        throw new ApiError(502, "We couldn't activate that wallet right now. Please try again.");
+    } catch (err) {
+      if (!isNotFound(err)) {
+        throw new ApiError(502, "We couldn't check that wallet right now. Please try again.");
       }
+      await this.fundWithFriendbot(
+        keypair.publicKey(),
+        "We couldn't activate that wallet right now. Please try again.",
+      );
     }
 
-    const enc = encryptSecret(keypair.secret());
-    const account = await prisma.stellarAccount.create({
-      data: {
-        publicKey: keypair.publicKey(),
-        encryptedSecret: enc.cipherText,
-        encryptionIv: enc.iv,
-        encryptionTag: enc.tag,
-      },
-    });
-
+    const account = await this.storeAccount(keypair);
     await this.ensureUsdcReady(account.id, account.publicKey);
-    return { id: account.id, publicKey: account.publicKey };
+    return account;
   }
 
-  /** USDC trustline when the held asset is USDC. */
-  async ensureUsdcReady(stellarAccountId: string, publicKey: string): Promise<void> {
+  /**
+   * Adds the USDC trustline an account needs before it can hold USDC.
+   * `assetCode` defaults to the configured held asset; pass a safety net's
+   * stored asset when acting on an existing net.
+   */
+  async ensureUsdcReady(stellarAccountId: string, publicKey: string, assetCode?: string): Promise<void> {
     const cfg = await settingsService.asset();
-    if (cfg.heldAsset !== "USDC") return;
+    if ((assetCode ?? cfg.heldAsset) !== "USDC") return;
 
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const asset = new Asset(cfg.usdcCode, cfg.usdcIssuer);
     const acct = await svr.loadAccount(publicKey);
 
     const hasTrustline = acct.balances.some(
@@ -139,21 +195,20 @@ class StellarService {
         b.asset_code === cfg.usdcCode &&
         b.asset_issuer === cfg.usdcIssuer,
     );
+    if (hasTrustline) return;
 
-    if (!hasTrustline) {
-      const key = await this.loadKeypair(stellarAccountId);
-      const tx = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase })
-        .addOperation(
-          Operation.changeTrust({
-            asset,
-            limit: "922337203685.4775807",
-          }),
-        )
-        .setTimeout(60)
-        .build();
-      tx.sign(key);
-      await this.submit(svr, tx);
-    }
+    const key = await this.loadKeypair(stellarAccountId);
+    const tx = new TransactionBuilder(acct, { fee: BASE_FEE, networkPassphrase })
+      .addOperation(
+        Operation.changeTrust({
+          asset: new Asset(cfg.usdcCode, cfg.usdcIssuer),
+          limit: MAX_TRUST_LIMIT,
+        }),
+      )
+      .setTimeout(TX_TIMEOUT_SECONDS)
+      .build();
+    tx.sign(key);
+    await this.submit(svr, tx, "trustline");
   }
 
   /** Initial USDC for new accounts (testnet treasury). */
@@ -165,35 +220,28 @@ class StellarService {
     if (!treasury) return;
 
     try {
-      await this.payFrom({
+      await this.pay({
         fromAccountId: treasury.id,
         fromPublicKey: treasury.publicKey,
         toPublicKey: publicKey,
         amount: WELCOME_USDC,
       });
-    } catch (err) {
-      console.warn("Welcome USDC transfer skipped:", err);
+    } catch (error) {
+      log("warn", "stellar.welcome_funds_skipped", { publicKey, error });
     }
   }
 
+  /** Direct payment in the held asset (or `assetCode` when given). */
   async pay(params: {
     fromAccountId: string;
     fromPublicKey: string;
     toPublicKey: string;
     amount: string;
-  }): Promise<{ txHash: string }> {
-    return this.payFrom(params);
-  }
-
-  private async payFrom(params: {
-    fromAccountId: string;
-    fromPublicKey: string;
-    toPublicKey: string;
-    amount: string;
+    assetCode?: string;
   }): Promise<{ txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const asset = await this.heldAsset();
+    const asset = await this.assetFor(params.assetCode ?? (await this.heldAssetCode()));
     const key = await this.loadKeypair(params.fromAccountId);
     const source = await svr.loadAccount(params.fromPublicKey);
 
@@ -205,10 +253,10 @@ class StellarService {
           amount: params.amount,
         }),
       )
-      .setTimeout(60)
+      .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
     tx.sign(key);
-    const result = await this.submit(svr, tx);
+    const result = await this.submit(svr, tx, "payment");
     this.invalidateBalance(params.fromPublicKey);
     this.invalidateBalance(params.toPublicKey);
     return { txHash: result.hash };
@@ -224,36 +272,28 @@ class StellarService {
     ownerPublicKey: string;
     recipientPublicKey: string;
     amount: string;
+    assetCode: string;
     unlockAt: Date;
   }): Promise<{ balanceId: string; txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const asset = await this.heldAsset();
+    const asset = await this.assetFor(params.assetCode);
     const ownerKey = await this.loadKeypair(params.ownerAccountId);
     const source = await svr.loadAccount(params.ownerPublicKey);
-
-    const unlockUnix = Math.floor(params.unlockAt.getTime() / 1000).toString();
-    const claimants = [
-      new Claimant(params.ownerPublicKey, Claimant.predicateUnconditional()),
-      new Claimant(
-        params.recipientPublicKey,
-        Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
-      ),
-    ];
 
     const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
       .addOperation(
         Operation.createClaimableBalance({
           asset,
           amount: params.amount,
-          claimants,
+          claimants: timeLockedClaimants(params.ownerPublicKey, params.recipientPublicKey, params.unlockAt),
         }),
       )
-      .setTimeout(60)
+      .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
 
     tx.sign(ownerKey);
-    const result = await this.submit(svr, tx);
+    const result = await this.submit(svr, tx, "create");
     this.invalidateBalance(params.ownerPublicKey);
     return { balanceId: tx.getClaimableBalanceId(0), txHash: result.hash };
   }
@@ -262,6 +302,7 @@ class StellarService {
   async openSplitSafetyNets(params: {
     ownerAccountId: string;
     ownerPublicKey: string;
+    assetCode: string;
     splits: Array<{
       recipientPublicKey: string;
       amount: string;
@@ -274,61 +315,52 @@ class StellarService {
 
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const asset = await this.heldAsset();
+    const asset = await this.assetFor(params.assetCode);
     const ownerKey = await this.loadKeypair(params.ownerAccountId);
     const source = await svr.loadAccount(params.ownerPublicKey);
 
-    let builder = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase });
-
+    const builder = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase });
     for (const split of params.splits) {
-      const unlockUnix = Math.floor(split.unlockAt.getTime() / 1000).toString();
-      const claimants = [
-        new Claimant(params.ownerPublicKey, Claimant.predicateUnconditional()),
-        new Claimant(
-          split.recipientPublicKey,
-          Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
-        ),
-      ];
-      builder = builder.addOperation(
+      builder.addOperation(
         Operation.createClaimableBalance({
           asset,
           amount: split.amount,
-          claimants,
+          claimants: timeLockedClaimants(params.ownerPublicKey, split.recipientPublicKey, split.unlockAt),
         }),
       );
     }
 
-    const tx = builder.setTimeout(60).build();
+    const tx = builder.setTimeout(TX_TIMEOUT_SECONDS).build();
     tx.sign(ownerKey);
-    const result = await this.submit(svr, tx);
+    const result = await this.submit(svr, tx, "create-split");
     this.invalidateBalance(params.ownerPublicKey);
 
     const balanceIds = params.splits.map((_, i) => tx.getClaimableBalanceId(i));
     return { balanceIds, txHash: result.hash };
   }
 
-  async resetSafetyNet(params: {
-    ownerAccountId: string;
-    ownerPublicKey: string;
-    recipientPublicKey: string;
+  /**
+   * One atomic transaction that claims `currentBalanceId` and immediately
+   * re-locks the same amount: the signer stays the unconditional claimant and
+   * `timeLockedPublicKey` may claim only after `unlockAt`. Used for sender
+   * check-ins, early opening, primary receipt into a guard, and receiver
+   * check-ins. If any part fails, nothing moves.
+   */
+  private async claimAndRelock(params: {
+    signerAccountId: string;
+    signerPublicKey: string;
+    timeLockedPublicKey: string;
     currentBalanceId: string;
     amount: string;
-    newUnlockAt: Date;
+    assetCode: string;
+    unlockAt: Date;
+    action: string;
   }): Promise<{ balanceId: string; txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
-    const asset = await this.heldAsset();
-    const ownerKey = await this.loadKeypair(params.ownerAccountId);
-    const source = await svr.loadAccount(params.ownerPublicKey);
-
-    const unlockUnix = Math.floor(params.newUnlockAt.getTime() / 1000).toString();
-    const claimants = [
-      new Claimant(params.ownerPublicKey, Claimant.predicateUnconditional()),
-      new Claimant(
-        params.recipientPublicKey,
-        Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
-      ),
-    ];
+    const asset = await this.assetFor(params.assetCode);
+    const key = await this.loadKeypair(params.signerAccountId);
+    const source = await svr.loadAccount(params.signerPublicKey);
 
     const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
       .addOperation(Operation.claimClaimableBalance({ balanceId: params.currentBalanceId }))
@@ -336,16 +368,38 @@ class StellarService {
         Operation.createClaimableBalance({
           asset,
           amount: params.amount,
-          claimants,
+          claimants: timeLockedClaimants(params.signerPublicKey, params.timeLockedPublicKey, params.unlockAt),
         }),
       )
-      .setTimeout(60)
+      .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
 
-    tx.sign(ownerKey);
-    const result = await this.submit(svr, tx);
-    this.invalidateBalance(params.ownerPublicKey);
+    tx.sign(key);
+    const result = await this.submit(svr, tx, params.action);
+    this.invalidateBalance(params.signerPublicKey);
     return { balanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
+  }
+
+  /** Sender check-in (or early opening when `newUnlockAt` is now). */
+  async resetSafetyNet(params: {
+    ownerAccountId: string;
+    ownerPublicKey: string;
+    recipientPublicKey: string;
+    currentBalanceId: string;
+    amount: string;
+    assetCode: string;
+    newUnlockAt: Date;
+  }): Promise<{ balanceId: string; txHash: string }> {
+    return this.claimAndRelock({
+      signerAccountId: params.ownerAccountId,
+      signerPublicKey: params.ownerPublicKey,
+      timeLockedPublicKey: params.recipientPublicKey,
+      currentBalanceId: params.currentBalanceId,
+      amount: params.amount,
+      assetCode: params.assetCode,
+      unlockAt: params.newUnlockAt,
+      action: "check-in",
+    });
   }
 
   async reclaimToOwner(params: {
@@ -357,6 +411,7 @@ class StellarService {
       accountId: params.ownerAccountId,
       publicKey: params.ownerPublicKey,
       balanceId: params.balanceId,
+      action: "take-back",
     });
   }
 
@@ -369,6 +424,7 @@ class StellarService {
       accountId: params.recipientAccountId,
       publicKey: params.recipientPublicKey,
       balanceId: params.balanceId,
+      action: "receive",
     });
   }
 
@@ -376,6 +432,7 @@ class StellarService {
     accountId: string;
     publicKey: string;
     balanceId: string;
+    action: string;
   }): Promise<{ txHash: string }> {
     const svr = await server();
     const { networkPassphrase } = await settingsService.stellar();
@@ -384,95 +441,59 @@ class StellarService {
 
     const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
       .addOperation(Operation.claimClaimableBalance({ balanceId: params.balanceId }))
-      .setTimeout(60)
+      .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
 
     tx.sign(key);
-    const result = await this.submit(svr, tx);
+    const result = await this.submit(svr, tx, params.action);
     this.invalidateBalance(params.publicKey);
     return { txHash: result.hash };
   }
 
+  /** Primary receiver claims, and the funds stay guarded for the backup. */
   async claimWithGuard(params: {
     recipientAccountId: string;
     recipientPublicKey: string;
     backupPublicKey: string;
     originalBalanceId: string;
     amount: string;
+    assetCode: string;
     guardUnlockAt: Date;
   }): Promise<{ guardBalanceId: string; txHash: string }> {
-    const svr = await server();
-    const { networkPassphrase } = await settingsService.stellar();
-    const asset = await this.heldAsset();
-    const key = await this.loadKeypair(params.recipientAccountId);
-    const source = await svr.loadAccount(params.recipientPublicKey);
-
-    const unlockUnix = Math.floor(params.guardUnlockAt.getTime() / 1000).toString();
-    const claimants = [
-      new Claimant(params.recipientPublicKey, Claimant.predicateUnconditional()),
-      new Claimant(
-        params.backupPublicKey,
-        Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
-      ),
-    ];
-
-    const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
-      .addOperation(Operation.claimClaimableBalance({ balanceId: params.originalBalanceId }))
-      .addOperation(
-        Operation.createClaimableBalance({
-          asset,
-          amount: params.amount,
-          claimants,
-        }),
-      )
-      .setTimeout(60)
-      .build();
-
-    tx.sign(key);
-    const result = await this.submit(svr, tx);
-    this.invalidateBalance(params.recipientPublicKey);
-    return { guardBalanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
+    const { balanceId, txHash } = await this.claimAndRelock({
+      signerAccountId: params.recipientAccountId,
+      signerPublicKey: params.recipientPublicKey,
+      timeLockedPublicKey: params.backupPublicKey,
+      currentBalanceId: params.originalBalanceId,
+      amount: params.amount,
+      assetCode: params.assetCode,
+      unlockAt: params.guardUnlockAt,
+      action: "receive-guarded",
+    });
+    return { guardBalanceId: balanceId, txHash };
   }
 
+  /** Primary receiver check-in: pushes the backup's unlock date forward. */
   async resetGuard(params: {
     recipientAccountId: string;
     recipientPublicKey: string;
     backupPublicKey: string;
     currentBalanceId: string;
     amount: string;
+    assetCode: string;
     newUnlockAt: Date;
   }): Promise<{ guardBalanceId: string; txHash: string }> {
-    const svr = await server();
-    const { networkPassphrase } = await settingsService.stellar();
-    const asset = await this.heldAsset();
-    const key = await this.loadKeypair(params.recipientAccountId);
-    const source = await svr.loadAccount(params.recipientPublicKey);
-
-    const unlockUnix = Math.floor(params.newUnlockAt.getTime() / 1000).toString();
-    const claimants = [
-      new Claimant(params.recipientPublicKey, Claimant.predicateUnconditional()),
-      new Claimant(
-        params.backupPublicKey,
-        Claimant.predicateNot(Claimant.predicateBeforeAbsoluteTime(unlockUnix)),
-      ),
-    ];
-
-    const tx = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
-      .addOperation(Operation.claimClaimableBalance({ balanceId: params.currentBalanceId }))
-      .addOperation(
-        Operation.createClaimableBalance({
-          asset,
-          amount: params.amount,
-          claimants,
-        }),
-      )
-      .setTimeout(60)
-      .build();
-
-    tx.sign(key);
-    const result = await this.submit(svr, tx);
-    this.invalidateBalance(params.recipientPublicKey);
-    return { guardBalanceId: tx.getClaimableBalanceId(1), txHash: result.hash };
+    const { balanceId, txHash } = await this.claimAndRelock({
+      signerAccountId: params.recipientAccountId,
+      signerPublicKey: params.recipientPublicKey,
+      timeLockedPublicKey: params.backupPublicKey,
+      currentBalanceId: params.currentBalanceId,
+      amount: params.amount,
+      assetCode: params.assetCode,
+      unlockAt: params.newUnlockAt,
+      action: "receiver-check-in",
+    });
+    return { guardBalanceId: balanceId, txHash };
   }
 
   async claimGuardAsBackup(params: {
@@ -480,13 +501,12 @@ class StellarService {
     backupPublicKey: string;
     guardBalanceId: string;
   }): Promise<{ txHash: string }> {
-    const result = await this.claimBy({
+    return this.claimBy({
       accountId: params.backupAccountId,
       publicKey: params.backupPublicKey,
       balanceId: params.guardBalanceId,
+      action: "backup-receive",
     });
-    this.invalidateBalance(params.backupPublicKey);
-    return result;
   }
 
   /** Spendable held-asset balance (USDC or XLM). Cached briefly. */
@@ -498,7 +518,13 @@ class StellarService {
 
     const cfg = await settingsService.asset();
     const svr = await server();
-    const account = await svr.loadAccount(publicKey);
+    let account: Horizon.AccountResponse;
+    try {
+      account = await svr.loadAccount(publicKey);
+    } catch (err) {
+      if (isNotFound(err)) return "0";
+      throw new ApiError(502, "We couldn't check your balance right now. Please try again.");
+    }
 
     let balance = "0";
     if (cfg.heldAsset === "USDC") {
@@ -530,7 +556,7 @@ class StellarService {
     if (cfg.heldAsset === "USDC" && cfg.treasuryAccountId) {
       const treasury = await prisma.stellarAccount.findUnique({ where: { id: cfg.treasuryAccountId } });
       if (treasury) {
-        return this.payFrom({
+        return this.pay({
           fromAccountId: treasury.id,
           fromPublicKey: treasury.publicKey,
           toPublicKey: destinationPublicKey,
@@ -540,14 +566,11 @@ class StellarService {
     }
 
     const svr = await server();
-    const { friendbotUrl, networkPassphrase } = await settingsService.stellar();
+    const { networkPassphrase } = await settingsService.stellar();
     const source = Keypair.random();
-    const funded = await fetch(`${friendbotUrl}?addr=${encodeURIComponent(source.publicKey())}`);
-    if (!funded.ok) {
-      throw new ApiError(502, "Couldn't add test funds right now. Please try again.");
-    }
+    await this.fundWithFriendbot(source.publicKey(), "Couldn't add test funds right now. Please try again.");
 
-    const asset = await this.heldAsset();
+    const asset = await this.assetFor(cfg.heldAsset);
     const sourceAccount = await svr.loadAccount(source.publicKey());
     const tx = new TransactionBuilder(sourceAccount, { fee: BASE_FEE, networkPassphrase })
       .addOperation(
@@ -557,24 +580,31 @@ class StellarService {
           amount,
         }),
       )
-      .setTimeout(60)
+      .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
 
     tx.sign(source);
-    const result = await this.submit(svr, tx);
+    const result = await this.submit(svr, tx, "test-funds");
     this.invalidateBalance(destinationPublicKey);
     return { txHash: result.hash };
   }
 
-  private async submit(svr: Horizon.Server, tx: Parameters<Horizon.Server["submitTransaction"]>[0]) {
+  private async submit(
+    svr: Horizon.Server,
+    tx: Parameters<Horizon.Server["submitTransaction"]>[0],
+    action: string,
+  ) {
+    const txHash = tx.hash().toString("hex");
     try {
       return await svr.submitTransaction(tx);
     } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { extras?: { result_codes?: unknown } } } })?.response?.data
-          ?.extras?.result_codes;
-      console.error("Stellar submit failed:", JSON.stringify(detail ?? err));
-      throw new ApiError(502, "The money couldn't be moved right now. Please try again.");
+      log("error", "stellar.submit_failed", {
+        action,
+        txHash,
+        resultCodes: resultCodesOf(err),
+        error: resultCodesOf(err) ? undefined : err,
+      });
+      throw submitFailureToApiError(err);
     }
   }
 }

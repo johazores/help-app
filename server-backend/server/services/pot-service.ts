@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
+import { parseAmount } from "@/lib/validation";
 import { stellarService } from "@/server/services/stellar-service";
 import { walletService } from "@/server/services/wallet-service";
 
@@ -17,11 +18,8 @@ class PotService {
 
   async create(userId: string, name: string, target: string) {
     const trimmed = name.trim().slice(0, 40);
-    const targetNum = Number(target);
     if (trimmed.length < 2) throw new ApiError(400, "Please name your goal.");
-    if (!Number.isFinite(targetNum) || targetNum <= 0) {
-      throw new ApiError(400, "Please enter a target amount.");
-    }
+    const targetNum = Number(parseAmount(target, { message: "Please enter a target amount." }));
     const pot = await prisma.pot.create({
       data: { userId, name: trimmed, target: targetNum.toFixed(2) },
     });
@@ -29,8 +27,7 @@ class PotService {
   }
 
   async addTo(userId: string, potId: string, amount: string) {
-    const add = Number(amount);
-    if (!Number.isFinite(add) || add <= 0) throw new ApiError(400, "Please enter an amount.");
+    const add = Number(parseAmount(amount, { message: "Please enter an amount." }));
     const pot = await prisma.pot.findFirst({ where: { id: potId, userId } });
     if (!pot) throw new ApiError(404, "That goal wasn't found.");
 

@@ -299,7 +299,7 @@ model PaluwaganContribution {
   member   PaluwaganMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
   memberId String
   amount   String
-  status   String   @default("DUE") // DUE | PAID
+  status   String   @default("DUE") // DUE | PAYING (payment in flight) | PAID
   paidAt   DateTime?
   txHash   String?
 

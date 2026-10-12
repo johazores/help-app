@@ -1,7 +1,9 @@
 import { randomBytes } from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { verifyPin } from "@/lib/crypto";
+import { parseAmount } from "@/lib/validation";
 import { stellarService } from "@/server/services/stellar-service";
 import { walletService } from "@/server/services/wallet-service";
 
@@ -70,10 +72,10 @@ class PaluwaganService {
     await this.requirePinOf(userId, input.pin);
     const name = input.name.trim().slice(0, 40);
     if (name.length < 2) throw new ApiError(400, "Please name your paluwagan.");
-    const amount = Number(input.amount);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_AMOUNT) {
-      throw new ApiError(400, `Please enter an amount between 1 and ${MAX_AMOUNT}.`);
-    }
+    const amount = parseAmount(input.amount, {
+      max: MAX_AMOUNT,
+      message: `Please enter an amount between 1 and ${MAX_AMOUNT}.`,
+    });
     if (!FREQUENCIES.includes(input.frequencyMinutes)) {
       throw new ApiError(400, "Please choose weekly or monthly.");
     }
@@ -84,7 +86,7 @@ class PaluwaganService {
       data: {
         name,
         ownerId: userId,
-        contributionAmount: amount.toFixed(7),
+        contributionAmount: amount,
         frequencyMinutes: input.frequencyMinutes,
         inviteCode: randomBytes(6).toString("base64url").slice(0, 8),
         members: {
@@ -233,6 +235,25 @@ class PaluwaganService {
     };
   }
 
+  /** Marks a member's contribution as in progress; fails if it already is or is paid. */
+  private async reserveContribution(cycleId: string, memberId: string, amount: string) {
+    try {
+      await prisma.paluwaganContribution.create({
+        data: { cycleId, memberId, amount, status: "PAYING" },
+      });
+      return;
+    } catch (err) {
+      if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2002") throw err;
+    }
+    const { count } = await prisma.paluwaganContribution.updateMany({
+      where: { cycleId, memberId, status: "DUE" },
+      data: { status: "PAYING" },
+    });
+    if (count === 0) {
+      throw new ApiError(409, "You've already paid this round, or your payment is still going through.");
+    }
+  }
+
   /** Member pays this cycle's recipient directly. Rotates when everyone has paid. */
   async contribute(userId: string, groupId: string, pin: string) {
     await this.requirePinOf(userId, pin);
@@ -248,11 +269,6 @@ class PaluwaganService {
     if (cycle.payoutMemberId === me.id) {
       throw new ApiError(409, "It's your turn to receive this round — nothing to pay.");
     }
-    const existing = await prisma.paluwaganContribution.findUnique({
-      where: { cycleId_memberId: { cycleId: cycle.id, memberId: me.id } },
-    });
-    if (existing?.status === "PAID") throw new ApiError(409, "You've already paid this round.");
-
     // Pay the recipient directly, wallet to wallet.
     const recipient = group.members.find((m: MemberRow) => m.id === cycle.payoutMemberId)!;
     const myWallet = await prisma.wallet.findUnique({
@@ -265,24 +281,29 @@ class PaluwaganService {
     });
     if (!myWallet || !theirWallet) throw new ApiError(409, "A wallet in this group is missing.");
 
-    const { txHash } = await stellarService.pay({
-      fromAccountId: myWallet.stellarAccount.id,
-      fromPublicKey: myWallet.stellarAccount.publicKey,
-      toPublicKey: theirWallet.stellarAccount.publicKey,
-      amount: group.contributionAmount,
-    });
+    // Reserve this member's contribution before any money moves, so a double
+    // tap or a second device can never pay the same round twice.
+    await this.reserveContribution(cycle.id, me.id, group.contributionAmount);
 
-    await prisma.paluwaganContribution.upsert({
-      where: { cycleId_memberId: { cycleId: cycle.id, memberId: me.id } },
-      update: { status: "PAID", paidAt: new Date(), txHash },
-      create: {
-        cycleId: cycle.id,
-        memberId: me.id,
+    let txHash: string;
+    try {
+      ({ txHash } = await stellarService.pay({
+        fromAccountId: myWallet.stellarAccount.id,
+        fromPublicKey: myWallet.stellarAccount.publicKey,
+        toPublicKey: theirWallet.stellarAccount.publicKey,
         amount: group.contributionAmount,
-        status: "PAID",
-        paidAt: new Date(),
-        txHash,
-      },
+      }));
+    } catch (err) {
+      await prisma.paluwaganContribution.updateMany({
+        where: { cycleId: cycle.id, memberId: me.id, status: "PAYING" },
+        data: { status: "DUE" },
+      });
+      throw err;
+    }
+
+    await prisma.paluwaganContribution.update({
+      where: { cycleId_memberId: { cycleId: cycle.id, memberId: me.id } },
+      data: { status: "PAID", paidAt: new Date(), txHash },
     });
 
     // Rotate if everyone (except the recipient) has now paid.

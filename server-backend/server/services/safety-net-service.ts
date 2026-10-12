@@ -2,13 +2,15 @@ import { randomBytes } from "node:crypto";
 import { ActivityType, SafetyNetStatus, type SafetyNet } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
+import { log } from "@/lib/log";
+import { displayAmount, parseAmount } from "@/lib/validation";
 import { stellarService } from "@/server/services/stellar-service";
 import { recipientService } from "@/server/services/recipient-service";
 import { walletService } from "@/server/services/wallet-service";
-import { settingsService } from "@/server/services/settings-service";
 
 const MINUTE_MS = 60 * 1000;
 const CHECK_IN_INTERVALS = [1, 10080, 43200, 129600];
+const MAX_SPLITS = 10;
 
 function makeClaimCode(): string {
   // Public claim links authorize money-moving actions. New links therefore use
@@ -24,8 +26,7 @@ type NetRow = SafetyNet & {
 /** Shape sent to the UI. Contains no technical terms. */
 function present(net: NetRow) {
   const now = Date.now();
-  const isOpen =
-    net.status === SafetyNetStatus.ACTIVE && net.unlockAt.getTime() <= now;
+  const isOpen = net.status === SafetyNetStatus.ACTIVE && net.unlockAt.getTime() <= now;
   return {
     id: net.id,
     kind: net.kind ?? "SAFETY_NET",
@@ -51,6 +52,27 @@ function present(net: NetRow) {
 
 function guardInterval(net: SafetyNet): number {
   return net.postReceiptCheckInIntervalMinutes ?? net.checkInIntervalMinutes;
+}
+
+/**
+ * Records the database side of a transaction that is already confirmed
+ * on-chain. If that write fails, the chain and the database disagree, so the
+ * event is logged with everything needed to repair the record by hand and the
+ * person is told the truth: the money moved, the history did not update yet.
+ */
+async function recordConfirmed<T>(
+  context: { action: string; txHash: string; safetyNetId?: string; balanceIds?: string[] },
+  write: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await write();
+  } catch (error) {
+    log("error", "reconciliation.required", { ...context, error });
+    throw new ApiError(
+      500,
+      "The money moved safely, but we couldn't update your history yet. Please refresh in a moment.",
+    );
+  }
 }
 
 class SafetyNetService {
@@ -119,24 +141,23 @@ class SafetyNetService {
     if (label.length < 2) throw new ApiError(400, "Please give this a short name.");
     const kind = input.kind === "GIFT" ? "GIFT" : "SAFETY_NET";
 
-    const amount = Number(input.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new ApiError(400, "Please enter how much you want to set aside.");
-    }
+    const amountStr = parseAmount(input.amount, {
+      message: "Please enter how much you want to set aside.",
+    });
     const interval = Math.round(input.checkInIntervalMinutes) || 43200;
     if (kind === "SAFETY_NET" && !CHECK_IN_INTERVALS.includes(interval)) {
       throw new ApiError(400, "Please choose how often you'll check in.");
     }
 
-    let backupRecipientId: string | null = null;
+    let backup: Awaited<ReturnType<typeof recipientService.requireOwned>> | null = null;
     let postReceiptInterval: number | null = null;
     if (input.backupRecipientId) {
       if (input.backupRecipientId === input.recipientId) {
         throw new ApiError(400, "Please choose someone different as the backup.");
       }
-      const backup = await recipientService.requireOwned(ownerId, input.backupRecipientId);
-      backupRecipientId = backup.id;
-      postReceiptInterval = Math.round(input.postReceiptCheckInIntervalMinutes ?? interval) || interval;
+      backup = await recipientService.requireOwned(ownerId, input.backupRecipientId);
+      postReceiptInterval =
+        Math.round(input.postReceiptCheckInIntervalMinutes ?? interval) || interval;
       if (!CHECK_IN_INTERVALS.includes(postReceiptInterval)) {
         throw new ApiError(400, "Please choose how often they should check in after receiving.");
       }
@@ -150,7 +171,10 @@ class SafetyNetService {
       unlockAt = input.opensAt ? new Date(input.opensAt) : new Date();
       if (Number.isNaN(unlockAt.getTime())) throw new ApiError(400, "Please choose a valid date.");
       if (unlockAt.getTime() < Date.now() - 5 * 60_000) {
-        throw new ApiError(400, "That date has already passed. Please choose today or a future date.");
+        throw new ApiError(
+          400,
+          "That date has already passed. Please choose today or a future date.",
+        );
       }
       if (unlockAt.getTime() > Date.now() + 366 * 24 * 60 * 60_000) {
         throw new ApiError(400, "Please choose a date within the next year.");
@@ -158,12 +182,12 @@ class SafetyNetService {
     } else {
       unlockAt = new Date(Date.now() + interval * MINUTE_MS);
     }
-    const amountStr = amount.toFixed(7);
-    const { heldAsset } = await settingsService.asset();
+    const heldAsset = await stellarService.heldAssetCode();
 
     await stellarService.ensureUsdcReady(
       recipient.stellarAccount.id,
       recipient.stellarAccount.publicKey,
+      heldAsset,
     );
 
     const { balanceId, txHash } = await stellarService.openSafetyNet({
@@ -171,46 +195,45 @@ class SafetyNetService {
       ownerPublicKey: wallet.stellarAccount.publicKey,
       recipientPublicKey: recipient.stellarAccount.publicKey,
       amount: amountStr,
+      assetCode: heldAsset,
       unlockAt,
     });
 
-    const backup = backupRecipientId
-      ? await prisma.recipient.findUnique({ where: { id: backupRecipientId } })
-      : null;
-
-    const net = await prisma.safetyNet.create({
-      data: {
-        ownerId,
-        walletId: wallet.id,
-        recipientId: recipient.id,
-        backupRecipientId,
-        postReceiptCheckInIntervalMinutes: postReceiptInterval,
-        kind,
-        label,
-        amount: amountStr,
-        asset: heldAsset,
-        balanceId,
-        checkInIntervalMinutes: interval,
-        unlockAt,
-        lastCheckInAt: new Date(),
-        claimCode: makeClaimCode(),
-        activity: {
-          create: {
-            type: ActivityType.CREATED,
-            description:
-              kind === "GIFT"
-                ? backup
-                  ? `You sent ${trimAmount(amountStr)} to ${recipient.name}, with ${backup.name} as backup.`
-                  : `You sent ${trimAmount(amountStr)} to ${recipient.name}.`
-                : backup
-                  ? `You set aside ${trimAmount(amountStr)} for ${recipient.name}, with ${backup.name} as backup.`
-                  : `You set aside ${trimAmount(amountStr)} for ${recipient.name}.`,
-            txHash,
+    const net = await recordConfirmed({ action: "create", txHash, balanceIds: [balanceId] }, () =>
+      prisma.safetyNet.create({
+        data: {
+          ownerId,
+          walletId: wallet.id,
+          recipientId: recipient.id,
+          backupRecipientId: backup?.id ?? null,
+          postReceiptCheckInIntervalMinutes: postReceiptInterval,
+          kind,
+          label,
+          amount: amountStr,
+          asset: heldAsset,
+          balanceId,
+          checkInIntervalMinutes: interval,
+          unlockAt,
+          lastCheckInAt: new Date(),
+          claimCode: makeClaimCode(),
+          activity: {
+            create: {
+              type: ActivityType.CREATED,
+              description:
+                kind === "GIFT"
+                  ? backup
+                    ? `You sent ${displayAmount(amountStr)} to ${recipient.name}, with ${backup.name} as backup.`
+                    : `You sent ${displayAmount(amountStr)} to ${recipient.name}.`
+                  : backup
+                    ? `You set aside ${displayAmount(amountStr)} for ${recipient.name}, with ${backup.name} as backup.`
+                    : `You set aside ${displayAmount(amountStr)} for ${recipient.name}.`,
+              txHash,
+            },
           },
         },
-      },
-      include: { recipient: true, backupRecipient: true },
-    });
+        include: { recipient: true, backupRecipient: true },
+      }),
+    );
     return present(net);
   }
 
@@ -234,30 +257,32 @@ class SafetyNetService {
     }
 
     const wallet = await walletService.requireActive(ownerId);
-    const unlockAt = new Date(Date.now() + interval * MINUTE_MS);
-    const { heldAsset } = await settingsService.asset();
+    if (input.splits.length > MAX_SPLITS) {
+      throw new ApiError(400, `You can split across up to ${MAX_SPLITS} loved ones at once.`);
+    }
 
+    const unlockAt = new Date(Date.now() + interval * MINUTE_MS);
+    const heldAsset = await stellarService.heldAssetCode();
+
+    const amounts = input.splits.map((split) =>
+      parseAmount(split.amount, { message: "Please enter a valid amount for each person." }),
+    );
     const resolved = await Promise.all(
-      input.splits.map(async (s) => {
-        const amount = Number(s.amount);
-        if (!Number.isFinite(amount) || amount <= 0) {
-          throw new ApiError(400, "Please enter a valid amount for each person.");
-        }
-        const recipient = await recipientService.requireOwned(ownerId, s.recipientId);
+      input.splits.map(async (split, i) => {
+        const recipient = await recipientService.requireOwned(ownerId, split.recipientId);
         await stellarService.ensureUsdcReady(
           recipient.stellarAccount.id,
           recipient.stellarAccount.publicKey,
+          heldAsset,
         );
-        return {
-          recipient,
-          amountStr: amount.toFixed(7),
-        };
+        return { recipient, amountStr: amounts[i] };
       }),
     );
 
     const { balanceIds, txHash } = await stellarService.openSplitSafetyNets({
       ownerAccountId: wallet.stellarAccount.id,
       ownerPublicKey: wallet.stellarAccount.publicKey,
+      assetCode: heldAsset,
       splits: resolved.map((r) => ({
         recipientPublicKey: r.recipient.stellarAccount.publicKey,
         amount: r.amountStr,
@@ -265,32 +290,34 @@ class SafetyNetService {
       })),
     });
 
-    const nets = await prisma.$transaction(
-      resolved.map((r, i) =>
-        prisma.safetyNet.create({
-          data: {
-            ownerId,
-            walletId: wallet.id,
-            recipientId: r.recipient.id,
-            kind: "SAFETY_NET",
-            label: `${label} — ${r.recipient.name}`,
-            amount: r.amountStr,
-            asset: heldAsset,
-            balanceId: balanceIds[i],
-            checkInIntervalMinutes: interval,
-            unlockAt,
-            lastCheckInAt: new Date(),
-            claimCode: makeClaimCode(),
-            activity: {
-              create: {
-                type: ActivityType.CREATED,
-                description: `You set aside ${trimAmount(r.amountStr)} for ${r.recipient.name} (split fund).`,
-                txHash: i === 0 ? txHash : null,
+    const nets = await recordConfirmed({ action: "create-split", txHash, balanceIds }, () =>
+      prisma.$transaction(
+        resolved.map((r, i) =>
+          prisma.safetyNet.create({
+            data: {
+              ownerId,
+              walletId: wallet.id,
+              recipientId: r.recipient.id,
+              kind: "SAFETY_NET",
+              label: `${label} — ${r.recipient.name}`,
+              amount: r.amountStr,
+              asset: heldAsset,
+              balanceId: balanceIds[i],
+              checkInIntervalMinutes: interval,
+              unlockAt,
+              lastCheckInAt: new Date(),
+              claimCode: makeClaimCode(),
+              activity: {
+                create: {
+                  type: ActivityType.CREATED,
+                  description: `You set aside ${displayAmount(r.amountStr)} for ${r.recipient.name} (split fund).`,
+                  txHash: i === 0 ? txHash : null,
+                },
               },
             },
-          },
-          include: { recipient: true, backupRecipient: true },
-        }),
+            include: { recipient: true, backupRecipient: true },
+          }),
+        ),
       ),
     );
 
@@ -321,25 +348,30 @@ class SafetyNetService {
       recipientPublicKey: net.recipient.stellarAccount.publicKey,
       currentBalanceId: net.balanceId,
       amount: net.amount,
+      assetCode: net.asset,
       newUnlockAt,
     });
 
-    const updated = await prisma.safetyNet.update({
-      where: { id: net.id },
-      data: {
-        balanceId,
-        unlockAt: newUnlockAt,
-        lastCheckInAt: new Date(),
-        activity: {
-          create: {
-            type: ActivityType.CHECKED_IN,
-            description: "You checked in. The money stays yours.",
-            txHash,
+    const updated = await recordConfirmed(
+      { action: "check-in", txHash, safetyNetId: net.id, balanceIds: [balanceId] },
+      () =>
+        prisma.safetyNet.update({
+          where: { id: net.id },
+          data: {
+            balanceId,
+            unlockAt: newUnlockAt,
+            lastCheckInAt: new Date(),
+            activity: {
+              create: {
+                type: ActivityType.CHECKED_IN,
+                description: "You checked in. The money stays yours.",
+                txHash,
+              },
+            },
           },
-        },
-      },
-      include: { recipient: true, backupRecipient: true },
-    });
+          include: { recipient: true, backupRecipient: true },
+        }),
+    );
     return present(updated);
   }
 
@@ -360,21 +392,25 @@ class SafetyNetService {
       balanceId: net.balanceId,
     });
 
-    const updated = await prisma.safetyNet.update({
-      where: { id: net.id },
-      data: {
-        status: SafetyNetStatus.CLOSED,
-        balanceId: null,
-        activity: {
-          create: {
-            type: ActivityType.CLOSED,
-            description: `You took back ${trimAmount(net.amount)}.`,
-            txHash,
+    const updated = await recordConfirmed(
+      { action: "take-back", txHash, safetyNetId: net.id },
+      () =>
+        prisma.safetyNet.update({
+          where: { id: net.id },
+          data: {
+            status: SafetyNetStatus.CLOSED,
+            balanceId: null,
+            activity: {
+              create: {
+                type: ActivityType.CLOSED,
+                description: `You took back ${displayAmount(net.amount)}.`,
+                txHash,
+              },
+            },
           },
-        },
-      },
-      include: { recipient: true, backupRecipient: true },
-    });
+          include: { recipient: true, backupRecipient: true },
+        }),
+    );
     return present(updated);
   }
 
@@ -436,7 +472,10 @@ class SafetyNetService {
     if (net.kind === "GIFT") {
       throw new ApiError(409, "This opens on its own — no need to ask.");
     }
-    await prisma.safetyNet.update({ where: { id: net.id }, data: { requestState: "REQUESTED" } });
+    await prisma.safetyNet.updateMany({
+      where: { id: net.id, status: SafetyNetStatus.ACTIVE },
+      data: { requestState: "REQUESTED" },
+    });
     return { requested: true };
   }
 
@@ -458,24 +497,29 @@ class SafetyNetService {
       recipientPublicKey: net.recipient.stellarAccount.publicKey,
       currentBalanceId: net.balanceId,
       amount: net.amount,
+      assetCode: net.asset,
       newUnlockAt: new Date(),
     });
-    const updated = await prisma.safetyNet.update({
-      where: { id: net.id },
-      data: {
-        balanceId,
-        unlockAt: new Date(),
-        requestState: "NONE",
-        activity: {
-          create: {
-            type: ActivityType.OPENED_TO_FAMILY,
-            description: `You opened this early for ${net.recipient.name}.`,
-            txHash,
+    const updated = await recordConfirmed(
+      { action: "open-early", txHash, safetyNetId: net.id, balanceIds: [balanceId] },
+      () =>
+        prisma.safetyNet.update({
+          where: { id: net.id },
+          data: {
+            balanceId,
+            unlockAt: new Date(),
+            requestState: "NONE",
+            activity: {
+              create: {
+                type: ActivityType.OPENED_TO_FAMILY,
+                description: `You opened this early for ${net.recipient.name}.`,
+                txHash,
+              },
+            },
           },
-        },
-      },
-      include: { recipient: true, backupRecipient: true },
-    });
+          include: { recipient: true, backupRecipient: true },
+        }),
+    );
     return present(updated);
   }
 
@@ -505,44 +549,51 @@ class SafetyNetService {
     await stellarService.ensureUsdcReady(
       net.recipient.stellarAccount.id,
       net.recipient.stellarAccount.publicKey,
+      net.asset,
     );
 
     const now = new Date();
     const interval = guardInterval(net);
     const guardUnlockAt = new Date(now.getTime() + interval * MINUTE_MS);
 
-    if (net.backupRecipientId && net.backupRecipient) {
+    const backup = net.backupRecipient;
+    if (net.backupRecipientId && backup) {
       const { guardBalanceId, txHash } = await stellarService.claimWithGuard({
         recipientAccountId: net.recipient.stellarAccount.id,
         recipientPublicKey: net.recipient.stellarAccount.publicKey,
-        backupPublicKey: net.backupRecipient.stellarAccount.publicKey,
+        backupPublicKey: backup.stellarAccount.publicKey,
         originalBalanceId: net.balanceId,
         amount: net.amount,
+        assetCode: net.asset,
         guardUnlockAt,
       });
 
-      await prisma.safetyNet.update({
-        where: { id: net.id },
-        data: {
-          status: SafetyNetStatus.GUARDED,
-          balanceId: null,
-          postReceiptBalanceId: guardBalanceId,
-          postReceiptUnlockAt: guardUnlockAt,
-          postReceiptLastCheckInAt: now,
-          activity: {
-            create: {
-              type: ActivityType.RECEIVED,
-              description: `${net.recipient.name} received ${trimAmount(net.amount)}. If they can't keep checking in, it goes to ${net.backupRecipient.name}.`,
-              txHash,
+      await recordConfirmed(
+        { action: "receive-guarded", txHash, safetyNetId: net.id, balanceIds: [guardBalanceId] },
+        () =>
+          prisma.safetyNet.update({
+            where: { id: net.id },
+            data: {
+              status: SafetyNetStatus.GUARDED,
+              balanceId: null,
+              postReceiptBalanceId: guardBalanceId,
+              postReceiptUnlockAt: guardUnlockAt,
+              postReceiptLastCheckInAt: now,
+              activity: {
+                create: {
+                  type: ActivityType.RECEIVED,
+                  description: `${net.recipient.name} received ${displayAmount(net.amount)}. If they can't keep checking in, it goes to ${backup.name}.`,
+                  txHash,
+                },
+              },
             },
-          },
-        },
-      });
+          }),
+      );
 
       return {
         amount: net.amount,
         forName: net.recipient.name,
-        backupName: net.backupRecipient.name,
+        backupName: backup.name,
         guarded: true,
         guardUnlockAt: guardUnlockAt.toISOString(),
         txHash,
@@ -555,20 +606,22 @@ class SafetyNetService {
       balanceId: net.balanceId,
     });
 
-    await prisma.safetyNet.update({
-      where: { id: net.id },
-      data: {
-        status: SafetyNetStatus.RECEIVED,
-        balanceId: null,
-        activity: {
-          create: {
-            type: ActivityType.RECEIVED,
-            description: `${net.recipient.name} received ${trimAmount(net.amount)}.`,
-            txHash,
+    await recordConfirmed({ action: "receive", txHash, safetyNetId: net.id }, () =>
+      prisma.safetyNet.update({
+        where: { id: net.id },
+        data: {
+          status: SafetyNetStatus.RECEIVED,
+          balanceId: null,
+          activity: {
+            create: {
+              type: ActivityType.RECEIVED,
+              description: `${net.recipient.name} received ${displayAmount(net.amount)}.`,
+              txHash,
+            },
           },
         },
-      },
-    });
+      }),
+    );
 
     return { amount: net.amount, forName: net.recipient.name, guarded: false, txHash };
   }
@@ -591,24 +644,29 @@ class SafetyNetService {
       backupPublicKey: net.backupRecipient.stellarAccount.publicKey,
       currentBalanceId: net.postReceiptBalanceId,
       amount: net.amount,
+      assetCode: net.asset,
       newUnlockAt,
     });
 
-    await prisma.safetyNet.update({
-      where: { id: net.id },
-      data: {
-        postReceiptBalanceId: guardBalanceId,
-        postReceiptUnlockAt: newUnlockAt,
-        postReceiptLastCheckInAt: new Date(),
-        activity: {
-          create: {
-            type: ActivityType.RECEIVER_CHECKED_IN,
-            description: `${net.recipient.name} checked in. The money stays theirs.`,
-            txHash,
+    await recordConfirmed(
+      { action: "receiver-check-in", txHash, safetyNetId: net.id, balanceIds: [guardBalanceId] },
+      () =>
+        prisma.safetyNet.update({
+          where: { id: net.id },
+          data: {
+            postReceiptBalanceId: guardBalanceId,
+            postReceiptUnlockAt: newUnlockAt,
+            postReceiptLastCheckInAt: new Date(),
+            activity: {
+              create: {
+                type: ActivityType.RECEIVER_CHECKED_IN,
+                description: `${net.recipient.name} checked in. The money stays theirs.`,
+                txHash,
+              },
+            },
           },
-        },
-      },
-    });
+        }),
+    );
 
     return {
       guardUnlockAt: newUnlockAt.toISOString(),
@@ -630,26 +688,35 @@ class SafetyNetService {
       throw new ApiError(409, "This isn't open to the backup yet.");
     }
 
+    await stellarService.ensureUsdcReady(
+      net.backupRecipient.stellarAccount.id,
+      net.backupRecipient.stellarAccount.publicKey,
+      net.asset,
+    );
+
     const { txHash } = await stellarService.claimGuardAsBackup({
       backupAccountId: net.backupRecipient.stellarAccount.id,
       backupPublicKey: net.backupRecipient.stellarAccount.publicKey,
       guardBalanceId: net.postReceiptBalanceId,
     });
 
-    await prisma.safetyNet.update({
-      where: { id: net.id },
-      data: {
-        status: SafetyNetStatus.BACKUP_RECEIVED,
-        postReceiptBalanceId: null,
-        activity: {
-          create: {
-            type: ActivityType.BACKUP_RECEIVED,
-            description: `${net.backupRecipient.name} received ${trimAmount(net.amount)} after ${net.recipient.name} couldn't check in.`,
-            txHash,
+    const backupName = net.backupRecipient.name;
+    await recordConfirmed({ action: "backup-receive", txHash, safetyNetId: net.id }, () =>
+      prisma.safetyNet.update({
+        where: { id: net.id },
+        data: {
+          status: SafetyNetStatus.BACKUP_RECEIVED,
+          postReceiptBalanceId: null,
+          activity: {
+            create: {
+              type: ActivityType.BACKUP_RECEIVED,
+              description: `${backupName} received ${displayAmount(net.amount)} after ${net.recipient.name} couldn't check in.`,
+              txHash,
+            },
           },
         },
-      },
-    });
+      }),
+    );
 
     return {
       amount: net.amount,
@@ -658,11 +725,6 @@ class SafetyNetService {
       txHash,
     };
   }
-}
-
-function trimAmount(amount: string): string {
-  const n = Number(amount);
-  return Number.isInteger(n) ? n.toString() : n.toString();
 }
 
 export const safetyNetService = new SafetyNetService();
