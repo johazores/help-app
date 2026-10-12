@@ -4,10 +4,19 @@ import { NextResponse } from "next/server";
 const apiOrigin = (process.env.API_URL ?? "http://localhost:8001").replace(/\/$/, "");
 const proxySecret = process.env.PROXY_SHARED_SECRET;
 
-/** First hop of X-Forwarded-For, as set by the hosting platform's edge. */
+/**
+ * The visitor's IP as seen by the hosting platform. Vercel replaces
+ * X-Forwarded-For with the real client address, so its first entry is
+ * trustworthy. Elsewhere a reverse proxy appends the address it saw, so only
+ * the last entry can be trusted; earlier entries may be forged by the client.
+ */
 function visitorIp(request: NextRequest): string | null {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || request.headers.get("x-real-ip");
+  const hops = (request.headers.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((hop) => hop.trim())
+    .filter(Boolean);
+  const hop = process.env.VERCEL === "1" ? hops[0] : hops[hops.length - 1];
+  return hop || request.headers.get("x-real-ip");
 }
 
 export function proxy(request: NextRequest) {

@@ -9,6 +9,7 @@ const valid = {
   AUTH_TOKEN_SECRET: randomBytes(48).toString("base64url"),
   APP_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   CRON_SECRET: "cron",
+  PROXY_SHARED_SECRET: "proxy",
 } as NodeJS.ProcessEnv;
 
 describe("environmentProblems", () => {
@@ -25,6 +26,13 @@ describe("environmentProblems", () => {
     assert.equal(problems.length, 2);
     assert.ok(problems.every(isFatal));
     assert.match(environmentProblems({ ...valid, AUTH_TOKEN_SECRET: "short" })[0], /32 characters/);
+  });
+
+  it("warns when the proxy secret is missing outside Vercel", () => {
+    const problems = environmentProblems({ ...valid, PROXY_SHARED_SECRET: undefined });
+    assert.equal(problems.length, 1);
+    assert.equal(isFatal(problems[0]), false);
+    assert.deepEqual(environmentProblems({ ...valid, PROXY_SHARED_SECRET: undefined, VERCEL: "1" }), []);
   });
 
   it("treats a missing cron secret as a warning only", () => {

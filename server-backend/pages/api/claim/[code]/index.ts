@@ -8,7 +8,9 @@ export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
   const code = String(req.query.code);
 
   if (req.method === "GET") {
-    await rateLimit("claim-view-ip", clientIp(req), 120, 15 * 60_000);
+    // The claim page polls every 12 seconds while it waits, and families often
+    // share one carrier-NAT address, so viewing is limited loosely.
+    await rateLimit("claim-view-ip", clientIp(req), 600, 15 * 60_000);
     res.status(200).json(await safetyNetService.lookupByCode(code));
     return;
   }

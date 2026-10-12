@@ -24,10 +24,16 @@ export function environmentProblems(env: NodeJS.ProcessEnv = process.env): strin
     problems.push("CRON_SECRET is not set, so scheduled reminders are disabled.");
   }
 
+  if (env.NODE_ENV === "production" && !env.PROXY_SHARED_SECRET && env.VERCEL !== "1") {
+    problems.push(
+      "PROXY_SHARED_SECRET is not set, so per-visitor rate limits see only the web proxy's address.",
+    );
+  }
+
   return problems;
 }
 
 /** Problems that make the API unsafe or unable to run; the rest are warnings. */
 export function isFatal(problem: string): boolean {
-  return !problem.startsWith("CRON_SECRET");
+  return !problem.startsWith("CRON_SECRET") && !problem.startsWith("PROXY_SHARED_SECRET");
 }
