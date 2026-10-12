@@ -11,3 +11,13 @@ export function Spinner({ className = "" }: { className?: string }) {
     </svg>
   );
 }
+
+/** Full-area loading state that screen readers announce. */
+export function PageSpinner({ label = "Loading…" }: { label?: string }) {
+  return (
+    <div role="status" className="flex justify-center py-20 text-ink">
+      <Spinner className="h-7 w-7" />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}

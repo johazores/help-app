@@ -2,9 +2,9 @@ type Tone = "active" | "open" | "received" | "closed" | "neutral";
 
 const tones: Record<Tone, string> = {
   active: "bg-sage/15 text-ink",
-  open: "bg-marigold/20 text-marigold-deep",
+  open: "bg-marigold/25 text-ink",
   received: "bg-ink text-paper",
-  closed: "bg-line text-subtle",
+  closed: "bg-line text-body",
   neutral: "bg-ink/5 text-ink",
 };
 

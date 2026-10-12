@@ -15,7 +15,11 @@ const config: Config = {
           deep: "#C9812A",
           soft: "#F6D9A6",
         },
-        sage: "#6F8F7E",
+        sage: {
+          DEFAULT: "#6F8F7E",
+          // Text-safe sage: 5.6:1 on white, 5.1:1 on paper (WCAG AA).
+          ink: "#4E6B5C",
+        },
         paper: "#F6F3EC",
         card: "#FFFFFF",
         line: "#E7E1D5",

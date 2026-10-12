@@ -18,7 +18,7 @@ const base =
 
 const variants: Record<Variant, string> = {
   primary: "bg-ink text-paper hover:bg-ink-soft active:bg-ink",
-  secondary: "bg-marigold text-ink hover:bg-marigold-deep hover:text-paper",
+  secondary: "bg-marigold text-ink hover:bg-marigold-soft",
   ghost: "bg-transparent text-ink hover:bg-ink/5 border border-line",
   danger: "bg-transparent text-danger border border-danger/30 hover:bg-danger/5",
 };
@@ -28,6 +28,15 @@ const sizes: Record<Size, string> = {
   lg: "h-14 px-7 text-[17px]",
 };
 
+/** Button styling for links that navigate (a link must not wrap a <button>). */
+export function buttonClasses({
+  variant = "primary",
+  size = "lg",
+  fullWidth = false,
+}: { variant?: Variant; size?: Size; fullWidth?: boolean } = {}): string {
+  return `${base} ${variants[variant]} ${sizes[size]} ${fullWidth ? "w-full" : ""}`;
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = "primary", size = "lg", loading, fullWidth, className = "", children, disabled, ...rest },
   ref,
@@ -35,8 +44,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
+      type="button"
       disabled={disabled || loading}
-      className={`${base} ${variants[variant]} ${sizes[size]} ${fullWidth ? "w-full" : ""} ${className}`}
+      aria-busy={loading || undefined}
+      className={`${buttonClasses({ variant, size, fullWidth })} ${className}`}
       {...rest}
     >
       {loading ? <Spinner /> : null}
