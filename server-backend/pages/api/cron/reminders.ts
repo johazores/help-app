@@ -1,27 +1,30 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { ApiError, allowMethods, handler, pruneRateLimits, secretsMatch } from "@/lib/api";
+import { log } from "@/lib/log";
 import { reminderService } from "@/server/services/reminder-service";
 
 /**
- * Cron endpoint for check-in reminder emails.
- * Protect with CRON_SECRET in the Authorization header:
- *   Authorization: Bearer <CRON_SECRET>
+ * Hourly maintenance: check-in reminder emails plus expired rate-limit cleanup.
  *
- * Schedule hourly via GitHub Actions, Vercel Cron, or similar.
+ * Requires `Authorization: Bearer <CRON_SECRET>`. Accepts POST (GitHub
+ * Actions) and GET (Vercel Cron). Without CRON_SECRET the endpoint only runs
+ * in local development, so a misconfigured deployment can't be triggered by
+ * strangers.
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    return res.status(405).json({ error: "Method not allowed." });
-  }
+export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
+  if (!allowMethods(req, res, ["GET", "POST"])) return;
 
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.authorization ?? "";
-    if (auth !== `Bearer ${secret}`) {
-      return res.status(401).json({ error: "Unauthorized." });
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new ApiError(503, "Scheduled jobs are not configured on this server.");
     }
+  } else if (!secretsMatch((req.headers.authorization ?? "").replace(/^Bearer /, ""), secret)) {
+    throw new ApiError(401, "Unauthorized.");
   }
 
-  const result = await reminderService.runCheckInReminders();
-  return res.status(200).json(result);
-}
+  const reminders = await reminderService.runCheckInReminders();
+  const prunedRateLimits = await pruneRateLimits();
+  log("info", "cron.reminders", { ...reminders, prunedRateLimits });
+  res.status(200).json({ ...reminders, prunedRateLimits });
+});
