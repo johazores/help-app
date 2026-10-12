@@ -243,7 +243,7 @@ export default function NewSafetyNetPage() {
             )}
           </Field>
           {amt > 0 && phpRate !== null ? (
-            <p className="hint" aria-live="polite">{peso(amt)} at today&rsquo;s rate</p>
+            <p className="hint" aria-live="polite">{peso(amt)}{" "}at today&rsquo;s rate</p>
           ) : null}
         </section>
 
@@ -284,7 +284,7 @@ export default function NewSafetyNetPage() {
             <span>
               <span className="block text-[17px] font-semibold text-ink">Add a backup person</span>
               <span className="block text-[15px] text-subtle">
-                If {recipientName} can&rsquo;t check in after receiving, this person receives next.
+                If {recipientName}{" "}can&rsquo;t check in after receiving, this person receives next.
               </span>
             </span>
           </label>
@@ -365,7 +365,7 @@ export default function NewSafetyNetPage() {
               </div>
               {useBackup && backupRecipientId ? (
                 <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-subtle">If {recipientName} can&rsquo;t check in after receiving</dt>
+                  <dt className="text-subtle">If {recipientName}{" "}can&rsquo;t check in after receiving</dt>
                   <dd className="text-right font-semibold text-ink">
                     goes to {backupName}
                     <span className="block text-[13px] font-normal text-subtle">

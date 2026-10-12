@@ -149,7 +149,7 @@ export default function HomePage() {
                 Time to check in for {topReminder.forName}
               </p>
               <p className="mt-1 text-[15px] text-body">
-                {topReminder.label} opens to your family in {countdown(topReminder.unlockAt).text} if you
+                {topReminder.label} opens to your family in {countdown(topReminder.unlockAt).text}{" "}if you
                 don&rsquo;t check in.
                 {reminders.length > 1 ? ` (+${reminders.length - 1} more)` : ""}
               </p>

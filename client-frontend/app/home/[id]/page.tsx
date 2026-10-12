@@ -175,7 +175,7 @@ export default function SafetyNetDetailPage() {
         title={`Open this for ${net.forName} now?`}
         description={
           <>
-            {net.forName} will be able to receive {formatMoney(net.amount)} right away. Once they
+            {net.forName} will be able to receive {formatMoney(net.amount)}{" "}right away. Once they
             receive it, you can&rsquo;t take it back.
           </>
         }
@@ -342,7 +342,7 @@ export default function SafetyNetDetailPage() {
             <div className="card border border-sage/30 bg-sage/5 p-6">
               <h2 className="text-[18px] font-bold text-ink">Backup is in place</h2>
               <p className="mt-2 text-[15px] leading-relaxed text-body">
-                {net.forName} received this money and checks in on their link. If they pass away or
+                {net.forName}{" "}received this money and checks in on their link. If they pass away or
                 can&rsquo;t check in, {net.backupName} can receive it after{" "}
                 {net.postReceiptUnlockAt ? formatDate(net.postReceiptUnlockAt) : "the check-in window"}.
               </p>

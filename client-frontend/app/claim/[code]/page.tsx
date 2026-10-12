@@ -224,7 +224,7 @@ export default function ClaimPage() {
                     </p>
                   ) : (
                     <p className="mt-2">
-                      {info.fromName} is keeping this money safe by checking in regularly. If they ever
+                      {info.fromName}{" "}is keeping this money safe by checking in regularly. If they ever
                       can&rsquo;t — starting{" "}
                       <span className="font-semibold text-ink">{formatDate(info.unlockAt)}</span> — it
                       opens to you, and this page will let you receive it.
@@ -362,7 +362,7 @@ export default function ClaimPage() {
                 <div className="card mt-4 overflow-hidden p-6 text-center">
                   <h2 className="text-[18px] font-bold text-ink">For {info.backupName}</h2>
                   <p className="mt-2 text-[15px] leading-relaxed text-body">
-                    {info.forName} hasn&rsquo;t checked in — this may mean they passed away or can no longer
+                    {info.forName}{" "}hasn&rsquo;t checked in — this may mean they passed away or can no longer
                     act. If you&rsquo;re {info.backupName}, you can receive this money now.
                   </p>
                   <div className="mt-4">
@@ -416,7 +416,7 @@ export default function ClaimPage() {
                 This money is now yours
               </h1>
               <p className="mt-2 text-[17px] leading-relaxed text-body">
-                {formatMoney(receivedAmount || info.amount)} is safely yours. {info.forName} couldn&rsquo;t
+                {formatMoney(receivedAmount || info.amount)} is safely yours. {info.forName}{" "}couldn&rsquo;t
                 keep checking in, so {info.fromName} asked Sagip to pass it to you as backup.
               </p>
               {receivedRef ? (
@@ -434,7 +434,7 @@ export default function ClaimPage() {
                 This is no longer available
               </h1>
               <p className="mt-2 text-[17px] leading-relaxed text-body">
-                {info.fromName} has taken this money back — that&rsquo;s something they can do while
+                {info.fromName}{" "}has taken this money back — that&rsquo;s something they can do while
                 it&rsquo;s still theirs. There&rsquo;s nothing you need to do.
               </p>
             </div>
