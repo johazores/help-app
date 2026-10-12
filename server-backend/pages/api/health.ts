@@ -3,7 +3,29 @@ import { allowMethods, handler } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { settingsService } from "@/server/services/settings-service";
 
-/** Lightweight health check for uptime monitoring and CI smoke tests. */
+const HORIZON_TIMEOUT_MS = 3_000;
+const HORIZON_CACHE_MS = 30_000;
+let horizonCheck: { ok: boolean; ms: number; at: number } | null = null;
+
+/** Pings Horizon at most every 30 seconds per instance so monitors stay cheap. */
+async function horizonReachable(horizonUrl: string): Promise<{ ok: boolean; ms: number }> {
+  if (horizonCheck && Date.now() - horizonCheck.at < HORIZON_CACHE_MS) return horizonCheck;
+  const started = Date.now();
+  let ok = false;
+  try {
+    const res = await fetch(horizonUrl, { signal: AbortSignal.timeout(HORIZON_TIMEOUT_MS) });
+    ok = res.ok;
+  } catch {
+    ok = false;
+  }
+  horizonCheck = { ok, ms: Date.now() - started, at: Date.now() };
+  return horizonCheck;
+}
+
+/**
+ * Health for uptime monitors and CI: the database answers a query and
+ * Horizon is reachable. Responds 503 when either dependency is down.
+ */
 export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
   if (!allowMethods(req, res, ["GET"])) return;
 
@@ -17,9 +39,14 @@ export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
   }
 
   let stellar = false;
+  let network: string | null = null;
+  let horizonMs: number | null = null;
   try {
-    const cfg = await settingsService.stellar();
-    stellar = Boolean(cfg.horizonUrl);
+    const [{ horizonUrl }, explorer] = await Promise.all([settingsService.stellar(), settingsService.explorer()]);
+    network = explorer.network;
+    const horizon = await horizonReachable(horizonUrl);
+    stellar = horizon.ok;
+    horizonMs = horizon.ms;
   } catch {
     stellar = false;
   }
@@ -29,6 +56,9 @@ export default handler(async (req: NextApiRequest, res: NextApiResponse) => {
     ok,
     db,
     stellar,
+    network,
+    horizonMs,
+    version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     ms: Date.now() - started,
   });
 });
