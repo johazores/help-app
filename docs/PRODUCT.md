@@ -19,7 +19,8 @@
 - **Testnet asset configuration** — the public deployment currently uses XLM; classic
   issued USDC is supported when treasury/trustlines are configured, while production
   mainnet USDC + anchor cash-out remain on the roadmap.
-- **No SMS/push** — recovery requires email; reminders are in-app only.
+- **No SMS/push** — recovery and check-in reminders use email.
 - **Paluwagan MVP** — no automated reminders, admin freeze UI, or dispute tooling yet.
-- **Single-instance assumptions** — in-memory rate limiting; fine now, Redis later.
-- **No automated test suite** — an e2e script exists (`npm run e2e`); CI tests are planned.
+- **Custodial signing** — the server signs for users; external-wallet signing is proposed sprint work.
+- **Reconciliation is manual** — a confirmed transaction whose database write fails is logged
+  (`reconciliation.required`) and repaired by hand; automatic recovery is future work.

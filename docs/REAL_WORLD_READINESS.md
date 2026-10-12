@@ -334,7 +334,7 @@ Avoid revenue based on hidden spreads, confusing fees, breakage, or users failin
 - [ ] Support case and complaint model.
 - [ ] Incident/status page.
 - [ ] Security headers and ASVS automated checks review.
-- [ ] Rate limits backed by Redis or another shared store.
+- [x] Rate limits backed by a shared store (PostgreSQL, keyed on normalized identities).
 - [ ] Transaction risk limits and manual review queue.
 - [ ] Production custody architecture decision record.
 - [ ] Licensed partner due-diligence checklist.

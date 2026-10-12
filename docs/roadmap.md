@@ -7,7 +7,8 @@ Sagip will remain testnet-only until custody, regulation, security, and operatio
 - Keep the sender, primary receiver, and backup beneficiary journeys simple and understandable.
 - Expand settlement, retry, and reconciliation testing.
 - Improve reminders and claim-link recovery reliability.
-- Strengthen privacy, rate limiting, and abuse protection.
+- Strengthen privacy and abuse protection beyond the current shared rate limits.
+- Automate recovery for transactions that confirm on-chain but fail to record.
 - Add clearer administrator operational alerts.
 - Validate the product with OFW families and non-technical recipients.
 

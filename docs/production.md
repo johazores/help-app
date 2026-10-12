@@ -12,7 +12,9 @@ Sagip currently runs on Stellar testnet and is not ready to hold real customer f
 - Administrator transaction visibility.
 - Testnet transaction hashes and public explorer links.
 - Email verification, reminders, and account recovery when SMTP is configured.
-- End-to-end testnet settlement validation.
+- End-to-end testnet settlement validation through the application's own services.
+- Shared, PostgreSQL-backed rate limiting and startup validation of secrets.
+- Health checks that cover the database and Horizon, and JSON logs with request ids.
 
 ## Testnet and simulated boundaries
 
@@ -38,7 +40,8 @@ Sagip currently runs on Stellar testnet and is not ready to hold real customer f
 - Multisig and approval thresholds.
 - Key rotation, recovery, and incident procedures.
 - Independent application and custody security review.
-- Rate limiting, abuse prevention, and operational alerts.
+- Abuse prevention beyond rate limits, and operational alerts on log events such as
+  `reconciliation.required` and `stellar.submit_failed`.
 
 ### Operations
 

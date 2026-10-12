@@ -71,6 +71,14 @@ Stellar enforces claim eligibility. The application coordinates accounts, links,
 - Backup beneficiaries
 - Paluwagan prototype
 
+### Security and operations
+
+- Rate limits shared across server instances and keyed on normalized identities
+- Claim-link recovery that requires both the receiver's and the sender's numbers
+- Content security policy, no-store API responses, and startup secret validation
+- Health checks covering the database and Horizon; JSON logs with request ids
+- Public, aggregate activity figures with verifiable receipts on the trust page
+
 ### Administration
 
 - Separate administrator authentication
@@ -101,7 +109,7 @@ Read the [security policy](docs/security.md) and [path to production](docs/produ
 | Blockchain | Stellar SDK and claimable balances on testnet |
 | Authentication | Signed JWT sessions with revocable session records |
 | Email | SMTP-based verification, recovery, and reminders |
-| Testing | TypeScript checks, linting, repository audits, and testnet end-to-end settlement |
+| Testing | Unit, database integration, and application-lifecycle suites on Stellar testnet; browser journey checks |
 
 Requires Node.js 20.9 or newer.
 
@@ -159,12 +167,15 @@ The API runs on port `8001` and is proxied by the frontend.
 ```bash
 npm run typecheck
 npm run lint
-npm run check
+npm test                   # unit tests
+npm run test:integration   # database tests
+npm run check              # typecheck + lint + unit tests + evidence audit
 npm run build
-npm run e2e
+npm run test:lifecycle     # Sagip's services end to end on Stellar testnet
+npm run e2e                # protocol-level claimable-balance lifecycle
 ```
 
-The end-to-end command writes real transactions to Stellar testnet and should be run only with the intended test configuration.
+The lifecycle and end-to-end commands write real transactions to Stellar testnet and should be run only with the intended test configuration. See [testing](docs/testing.md) for what each suite proves.
 
 ## Production limitations
 
@@ -175,7 +186,7 @@ Before real funds or mainnet use, Sagip requires:
 - KMS or HSM-backed signing;
 - multisig, key rotation, and recovery procedures;
 - reconciliation and transaction-recovery operations;
-- monitoring, rate limiting, and incident response;
+- production monitoring, alerting, and incident response;
 - independent application and custody security review;
 - customer support and dispute procedures;
 - controlled pilot validation.
@@ -194,6 +205,8 @@ Do not switch to mainnet and describe the result as production-ready without com
 - [Changelog](docs/changelog.md)
 - [Contributing](docs/contributing.md)
 - [Security policy](docs/security.md)
+- [Threat model](docs/threat-model.md)
+- [Testing](docs/testing.md)
 - [Code of conduct](docs/code-of-conduct.md)
 - [Repository metadata](docs/repository-metadata.md)
 

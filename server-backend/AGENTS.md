@@ -51,6 +51,17 @@ pages/api/**/*.ts          Thin HTTP layer (method check, auth, JSON)
 - `handler(fn)` — wraps async handler, maps `ApiError` → HTTP status
 - `requireUser(req)` / `requireAdmin(req)` — JWT + live session check
 - `allowMethods(req, res, methods)` — early return on wrong verb
+- `rateLimit(scope, identity, max, windowMs)` — **async**, PostgreSQL-backed, shared by
+  every instance; `await` it. Key on a normalized identity (`normalizePhone(...)`,
+  `user.id`, `clientIp(req)`), never a raw request string.
+- `clientIp(req)` — visitor IP (trusts the web proxy only with `PROXY_SHARED_SECRET`)
+
+**`lib/validation.ts`** — `text`, `normalizePhone`, `normalizeEmail`, `requirePin`,
+`parseAmount` (exact seven-decimal Stellar amounts). Coerce every request field through
+these; never call `.trim()` on raw `req.body` values.
+
+**`lib/log.ts`** — `log(level, event, fields)` writes one-line JSON. Use event names
+such as `stellar.submit_failed` or `reconciliation.required`.
 
 ## Stellar conventions
 
@@ -59,6 +70,10 @@ pages/api/**/*.ts          Thin HTTP layer (method check, auth, JSON)
 - Held asset is **USDC** on testnet (configured in `Setting` table via seed).
 - **`ensureUsdcReady()`** before set-aside/claim when trustline may be missing.
 - Store **`claimableBalanceId`** and **`txHash`** on activity records for explorer links.
+- Operations on an existing safety net pass **`assetCode: net.asset`** — never the current
+  setting — so a configuration change can't re-create a balance in another asset.
+- Database writes after a confirmed transaction go through `recordConfirmed()` in
+  `safety-net-service.ts`, which logs `reconciliation.required` if the write fails.
 - **`SKIP_TREASURY=1`** in env skips treasury bootstrap during seed (CI/offline).
 
 ## Database
@@ -88,8 +103,11 @@ export default handler(async (req, res) => {
 });
 ```
 
-3. Mirror the client call in `client-frontend/services/<domain>-service.ts`
-4. For cron/webhook routes: protect with env secret (see `pages/api/cron/reminders.ts`)
+3. Rate-limit anything public, credential-checking, or that spends test-network resources
+4. Mirror the client call in `client-frontend/services/<domain>-service.ts`
+5. Add a unit test for pure logic (`tests/unit/`) and extend the lifecycle suite
+   (`tests/lifecycle/`) when the change touches money movement
+6. For cron/webhook routes: protect with env secret (see `pages/api/cron/reminders.ts`)
 
 ## Environment
 
@@ -117,7 +135,10 @@ npm run lint             # eslint . (scripts/ ignored)
 npm run typecheck
 npm run prisma:migrate   # dev migrations
 npm run db:seed
-npm run e2e              # Stellar testnet integration test
+npm test                 # unit tests
+npm run test:integration # database tests
+npm run test:lifecycle   # app lifecycle on Stellar testnet
+npm run e2e              # protocol-level testnet lifecycle
 npm run setup            # migrate deploy + generate + seed
 ```
 
@@ -135,7 +156,7 @@ code here only.
 ## Docs
 
 - Product: [../README.md](../README.md)
-- Stellar succession: [../docs/SUCCESSION.md](../docs/SUCCESSION.md)
-- Funding sprint: [../docs/FUNDING.md](../docs/FUNDING.md)
-- Production path: [../docs/PRODUCTION.md](../docs/PRODUCTION.md)
+- Stellar succession: [../docs/succession.md](../docs/succession.md)
+- Funding sprint: [../docs/funding.md](../docs/funding.md)
+- Production path: [../docs/production.md](../docs/production.md)
 - Client rules: [../client-frontend/AGENTS.md](../client-frontend/AGENTS.md)

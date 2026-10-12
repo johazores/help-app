@@ -84,6 +84,7 @@ cp .env.example .env.local
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `API_URL` | Production only | Backend origin for `proxy.ts` (dev default: `http://localhost:8001`) |
+| `PROXY_SHARED_SECRET` | Recommended | Same value as the API's; forwards the visitor IP so per-visitor rate limits work behind the proxy |
 
 All secrets (`DATABASE_URL`, `AUTH_TOKEN_SECRET`, `CORS_ORIGIN`, SMTP, …) belong in
 **`server-backend/.env`** — see [`server-backend/.env.example`](../server-backend/.env.example).
@@ -91,6 +92,6 @@ All secrets (`DATABASE_URL`, `AUTH_TOKEN_SECRET`, `CORS_ORIGIN`, SMTP, …) belo
 ## Related docs
 
 - [Root README](../README.md) — architecture, setup, demo script
-- [docs/DEMO.md](../docs/DEMO.md) — live pitch walkthrough
-- [docs/ONBOARDING.md](../docs/ONBOARDING.md) — user-facing guide
+- [docs/demo.md](../docs/demo.md) — live pitch walkthrough
+- [docs/onboarding.md](../docs/onboarding.md) — user-facing guide
 - [AGENTS.md](./AGENTS.md) — AI/agent coding rules for this workspace

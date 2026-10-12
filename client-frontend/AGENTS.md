@@ -92,6 +92,6 @@ Never implement business rules only on the client.
 
 ## Docs
 
-- Product & demo: [../README.md](../README.md), [../docs/DEMO.md](../docs/DEMO.md)
-- User guide: [../docs/ONBOARDING.md](../docs/ONBOARDING.md)
+- Product & demo: [../README.md](../README.md), [../docs/demo.md](../docs/demo.md)
+- User guide: [../docs/onboarding.md](../docs/onboarding.md)
 - Backend rules: [../server-backend/AGENTS.md](../server-backend/AGENTS.md)

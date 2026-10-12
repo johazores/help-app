@@ -12,7 +12,13 @@ This register separates the Sagip features that exist today from the work propos
 | Backend | `server-backend/` | Implemented |
 | Stellar operations | `server-backend/server/services/stellar-service.ts` | Implemented |
 | Safety-net lifecycle | `server-backend/server/services/safety-net-service.ts` | Implemented |
-| Testnet integration test | `server-backend/scripts/e2e-test.ts` | Implemented |
+| Protocol testnet lifecycle | `server-backend/scripts/e2e-test.ts` | Implemented |
+| Application testnet lifecycle | `server-backend/tests/lifecycle/app-lifecycle.test.ts` | Implemented |
+| Unit and database tests | `server-backend/tests/unit/`, `server-backend/tests/integration/` | Implemented |
+| Receipt manifests | CI artifact `sagip-instawards-receipts` (both lifecycles) | Implemented |
+| Public activity figures | `GET /api/stats`, trust page | Implemented |
+| Health monitoring | `GET /api/health` (database query and Horizon reachability) | Implemented |
+| Test guide | `docs/testing.md` | Available |
 | CI | `.github/workflows/ci.yml` | Public |
 
 ## What the current code proves
@@ -26,6 +32,11 @@ The current custodial testnet path implements:
 - post-receipt guarding and backup-beneficiary receipt;
 - classic issued-asset trustline preparation when configured;
 - Horizon submission and transaction-hash storage.
+
+The application lifecycle suite runs these steps through Sagip's own service layer and
+also verifies the rejections: a claim before the unlock time, a second claim, a backup
+claim before the guard lapses, an underfunded set-aside, and claim-link recovery with the
+wrong sender number.
 
 The current path is custodial and signs on the server. It is not described as non-custodial.
 

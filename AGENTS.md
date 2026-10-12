@@ -49,11 +49,11 @@ npm run e2e          # Stellar testnet (server-backend)
 | Doc | Topic |
 |-----|-------|
 | [README.md](./README.md) | Product overview, setup, architecture |
-| [docs/DEMO.md](./docs/DEMO.md) | Live demo script |
-| [docs/ONBOARDING.md](./docs/ONBOARDING.md) | User guide |
-| [docs/FUNDING.md](./docs/FUNDING.md) | USDC, reminders, CI |
-| [docs/PRODUCTION.md](./docs/PRODUCTION.md) | Production path |
-| [docs/SUCCESSION.md](./docs/SUCCESSION.md) | Backup beneficiary |
+| [docs/demo.md](./docs/demo.md) | Live demo script |
+| [docs/onboarding.md](./docs/onboarding.md) | User guide |
+| [docs/funding.md](./docs/funding.md) | USDC, reminders, CI |
+| [docs/production.md](./docs/production.md) | Production path |
+| [docs/succession.md](./docs/succession.md) | Backup beneficiary |
 
 ## Common mistakes
 
