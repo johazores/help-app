@@ -18,6 +18,20 @@ export function isWalletRequired(err: unknown): boolean {
   return err instanceof ApiRequestError && err.status === 409 && /don't have a wallet yet/i.test(err.message);
 }
 
+/**
+ * True when the server couldn't say whether money moved: a confirmation
+ * timeout (504), or a confirmed transaction whose record failed (500 with the
+ * "moved safely" message). Retrying could move the money twice, so screens
+ * send the person to check their history instead.
+ */
+export function isUncertainOutcome(err: unknown): boolean {
+  if (!(err instanceof ApiRequestError)) return false;
+  return err.status === 504 || (err.status === 500 && /moved safely|was sent/i.test(err.message));
+}
+
+export const UNCERTAIN_OUTCOME_HELP =
+  "Please don't try again yet. Check your home screen in a minute to see whether it went through.";
+
 export function loadErrorMessage(err: unknown): string {
   if (err instanceof ApiRequestError) return err.message;
   if (err instanceof Error) return err.message;

@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { ChoiceGrid } from "@/components/ui/choice-grid";
@@ -13,7 +13,12 @@ import { LoadErrorBanner } from "@/components/load-error-banner";
 import { authService } from "@/services/auth-service";
 import { recipientService } from "@/services/recipient-service";
 import { safetyNetService } from "@/services/safety-net-service";
-import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
+import {
+  handleProtectedLoadError,
+  isUncertainOutcome,
+  loadErrorMessage,
+  UNCERTAIN_OUTCOME_HELP,
+} from "@/lib/api-errors";
 import { decimalInput, formatDate, formatMoney } from "@/lib/format";
 import type { Recipient } from "@/services/types";
 
@@ -51,6 +56,9 @@ function GiftForm() {
   const [error, setError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Set when the server couldn't say whether the last part moved; the plan is
+  // then locked so that part can never be sent twice.
+  const [uncertain, setUncertain] = useState(false);
   // Parts already set aside in this plan. A retry after a failure skips them,
   // so no part is ever created twice.
   const [createdParts, setCreatedParts] = useState(0);
@@ -142,9 +150,14 @@ function GiftForm() {
         router.push(`/home/${net.id}?created=1`);
       }
     } catch (err) {
+      setSubmitting(false);
+      if (isUncertainOutcome(err)) {
+        setUncertain(true);
+        setError(`${loadErrorMessage(err)} ${UNCERTAIN_OUTCOME_HELP}`);
+        return;
+      }
       setError(loadErrorMessage(err));
       submittingRef.current = false;
-      setSubmitting(false);
     }
   }
 
@@ -272,7 +285,9 @@ function GiftForm() {
       <div className="mt-5 max-w-xl space-y-4">
         {error ? (
           <p className="text-[15px] font-medium text-danger" role="alert">
-            {planStarted
+            {uncertain
+              ? `${createdParts} of ${filledParts.length} parts are confirmed. ${error}`
+              : planStarted
               ? `${createdParts} of ${filledParts.length} parts are set aside. ${error} Tap “Finish the plan” to set aside the rest — parts already done won't be repeated.`
               : error}
           </p>
@@ -324,16 +339,22 @@ function GiftForm() {
                 : "You can take a gift back any time before it's received."}
             </p>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row-reverse">
-              <Button fullWidth loading={submitting} onClick={confirm}>
-                {planStarted
-                  ? "Finish the plan"
-                  : submitting && mode === "parts"
-                  ? `Setting aside part ${createdParts + 1}…`
-                  : mode === "now"
-                  ? `Send ${formatMoney(total)} now`
-                  : "Confirm"}
-              </Button>
-              {!planStarted ? (
+              {uncertain ? (
+                <Link href="/home" className={buttonClasses({ fullWidth: true })}>
+                  Check my home screen
+                </Link>
+              ) : (
+                <Button fullWidth loading={submitting} onClick={confirm}>
+                  {planStarted
+                    ? "Finish the plan"
+                    : submitting && mode === "parts"
+                    ? `Setting aside part ${createdParts + 1}…`
+                    : mode === "now"
+                    ? `Send ${formatMoney(total)} now`
+                    : "Confirm"}
+                </Button>
+              )}
+              {!planStarted && !uncertain ? (
                 <Button fullWidth variant="ghost" disabled={submitting} onClick={() => setReviewing(false)}>
                   Go back
                 </Button>

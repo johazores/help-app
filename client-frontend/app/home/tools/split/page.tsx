@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClasses } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { ChoiceGrid } from "@/components/ui/choice-grid";
@@ -13,7 +13,12 @@ import { LoadErrorBanner } from "@/components/load-error-banner";
 import { authService } from "@/services/auth-service";
 import { recipientService } from "@/services/recipient-service";
 import { safetyNetService } from "@/services/safety-net-service";
-import { handleProtectedLoadError, loadErrorMessage } from "@/lib/api-errors";
+import {
+  handleProtectedLoadError,
+  isUncertainOutcome,
+  loadErrorMessage,
+  UNCERTAIN_OUTCOME_HELP,
+} from "@/lib/api-errors";
 import { CHECK_IN_INTERVALS, decimalInput, formatMoney, intervalPhrase } from "@/lib/format";
 import type { Recipient } from "@/services/types";
 
@@ -31,6 +36,7 @@ export default function SplitPage() {
   const [error, setError] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
   const submittingRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -84,9 +90,14 @@ export default function SplitPage() {
       });
       router.push("/home");
     } catch (err) {
+      setSubmitting(false);
+      if (isUncertainOutcome(err)) {
+        setUncertain(true);
+        setError(`${loadErrorMessage(err)} ${UNCERTAIN_OUTCOME_HELP}`);
+        return;
+      }
       setError(loadErrorMessage(err));
       submittingRef.current = false;
-      setSubmitting(false);
     }
   }
 
@@ -195,12 +206,20 @@ export default function SplitPage() {
               </div>
             </dl>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row-reverse">
-              <Button fullWidth loading={submitting} onClick={confirm}>
-                Confirm &amp; set aside
-              </Button>
-              <Button fullWidth variant="ghost" disabled={submitting} onClick={() => setReviewing(false)}>
-                Go back
-              </Button>
+              {uncertain ? (
+                <Link href="/home" className={buttonClasses({ fullWidth: true })}>
+                  Check my home screen
+                </Link>
+              ) : (
+                <>
+                  <Button fullWidth loading={submitting} onClick={confirm}>
+                    Confirm &amp; set aside
+                  </Button>
+                  <Button fullWidth variant="ghost" disabled={submitting} onClick={() => setReviewing(false)}>
+                    Go back
+                  </Button>
+                </>
+              )}
             </div>
             <p className="mt-3 text-center text-[13px] text-subtle">
               All shares are set aside together in one step — either all of them or none.
